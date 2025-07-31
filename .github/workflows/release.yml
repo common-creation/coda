@@ -1,0 +1,106 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  goreleaser:
+    name: Release
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.21'
+        cache: true
+    
+    - name: Run tests
+      run: go test -v ./...
+    
+    - name: Run GoReleaser
+      uses: goreleaser/goreleaser-action@v6
+      with:
+        distribution: goreleaser
+        version: latest
+        args: release --clean
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build-without-goreleaser:
+    name: Build Binaries (Fallback)
+    runs-on: ubuntu-latest
+    if: failure()
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.21'
+        cache: true
+    
+    - name: Get version
+      id: get_version
+      run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+    
+    - name: Build for multiple platforms
+      run: |
+        # Create dist directory
+        mkdir -p dist
+        
+        # Build for different platforms
+        # macOS AMD64
+        GOOS=darwin GOARCH=amd64 go build -ldflags "-X main.version=${{ steps.get_version.outputs.VERSION }}" -o dist/coda-darwin-amd64 ./cmd/coda
+        
+        # macOS ARM64
+        GOOS=darwin GOARCH=arm64 go build -ldflags "-X main.version=${{ steps.get_version.outputs.VERSION }}" -o dist/coda-darwin-arm64 ./cmd/coda
+        
+        # Linux AMD64
+        GOOS=linux GOARCH=amd64 go build -ldflags "-X main.version=${{ steps.get_version.outputs.VERSION }}" -o dist/coda-linux-amd64 ./cmd/coda
+        
+        # Linux ARM64
+        GOOS=linux GOARCH=arm64 go build -ldflags "-X main.version=${{ steps.get_version.outputs.VERSION }}" -o dist/coda-linux-arm64 ./cmd/coda
+        
+        # Windows AMD64
+        GOOS=windows GOARCH=amd64 go build -ldflags "-X main.version=${{ steps.get_version.outputs.VERSION }}" -o dist/coda-windows-amd64.exe ./cmd/coda
+    
+    - name: Create checksums
+      run: |
+        cd dist
+        sha256sum * > checksums.txt
+    
+    - name: Create Release
+      id: create_release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ github.ref }}
+        release_name: Release ${{ steps.get_version.outputs.VERSION }}
+        draft: true
+        prerelease: false
+    
+    - name: Upload Release Assets
+      run: |
+        for file in dist/*; do
+          asset_name=$(basename "$file")
+          echo "Uploading $asset_name"
+          curl -X POST \
+            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Content-Type: application/octet-stream" \
+            --data-binary @"$file" \
+            "https://uploads.github.com/repos/${{ github.repository }}/releases/${{ steps.create_release.outputs.id }}/assets?name=$asset_name"
+        done

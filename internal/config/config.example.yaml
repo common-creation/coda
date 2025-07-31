@@ -1,0 +1,115 @@
+# CODA Configuration File
+# This is a sample configuration file for CODA
+
+# AI Provider Configuration
+ai:
+  # Provider can be "openai" or "azure"
+  provider: openai
+  
+  # API key (can also be set via OPENAI_API_KEY or AZURE_OPENAI_API_KEY env var)
+  # api_key: your-api-key-here
+  
+  # Model to use
+  model: gpt-4
+  
+  # Temperature (0-2, default: 0.7)
+  temperature: 0.7
+  
+  # Maximum tokens for response
+  max_tokens: 4096
+  
+  # OpenAI specific settings
+  openai:
+    # Custom base URL (optional)
+    # base_url: https://api.openai.com/v1
+    
+    # Organization ID (optional)
+    # organization: org-xxxxx
+  
+  # Azure OpenAI specific settings
+  azure:
+    # Azure endpoint (required for Azure)
+    # endpoint: https://your-resource.openai.azure.com
+    
+    # Deployment name (required for Azure)
+    # deployment_name: your-deployment
+    
+    # API version
+    api_version: "2024-02-01"
+
+# Tools Configuration
+tools:
+  # Enabled tools
+  enabled:
+    - read_file
+    - write_file
+    - edit_file
+    - list_files
+    - search_files
+  
+  # Workspace root directory
+  workspace_root: "."
+  
+  # Auto-approve tool executions (use with caution!)
+  auto_approve: false
+  
+  # File access restrictions
+  file_access:
+    # Allowed paths (glob patterns)
+    allowed_paths:
+      - "**/*"
+    
+    # Denied paths (glob patterns)
+    denied_paths:
+      - "**/node_modules/**"
+      - "**/.git/**"
+      - "**/vendor/**"
+      - "**/*.exe"
+      - "**/*.dll"
+      - "**/*.so"
+      - "**/*.dylib"
+    
+    # Maximum file size in bytes (10MB)
+    max_file_size: 10485760
+
+# UI Configuration
+ui:
+  # Theme name
+  theme: default
+  
+  # Enable syntax highlighting
+  syntax_highlighting: true
+  
+  # Enable markdown rendering
+  markdown_rendering: true
+  
+  # Key bindings preset
+  key_bindings: default
+  
+  # Input display lines (0 for unlimited)
+  input_display_lines: 3
+
+# Logging Configuration
+logging:
+  # Log level (debug, info, warn, error)
+  level: info
+  
+  # Log format (text, json)
+  format: text
+  
+  # Log file path (empty for stdout only)
+  # file: /path/to/logfile.log
+  
+  # Enable timestamps
+  timestamp: true
+
+# Session Configuration
+session:
+  # History file path
+  # history_file: ~/.config/coda/history.json
+  
+  # Maximum history entries
+  max_history: 1000
+  
+  # Auto-save interval in seconds
+  auto_save_interval: 30

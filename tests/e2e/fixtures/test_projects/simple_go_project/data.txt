@@ -1,0 +1,23 @@
+# Sample data file for testing
+# Lines starting with # are comments and will be ignored
+
+apple
+banana
+cherry
+date
+elderberry
+
+# More test data
+grape
+honeydew
+kiwi
+lemon
+mango
+
+# Empty lines are also ignored
+
+orange
+pineapple
+quince
+raspberry
+strawberry
