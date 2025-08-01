@@ -213,7 +213,6 @@ func (t *DefaultTheme) GetStyles() Styles {
 		// Input styles
 		UserInput: lipgloss.NewStyle().
 			Foreground(colors.Foreground).
-			Background(colors.Background).
 			BorderStyle(lipgloss.RoundedBorder()).
 			BorderForeground(colors.Border).
 			Padding(0, 1),
