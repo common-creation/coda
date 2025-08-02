@@ -63,13 +63,13 @@ type Model struct {
 	showHelp     bool
 	loading      bool
 	error        error
-	
+
 	// Spinner and timing
 	spinner         spinner.Model
 	loadingStart    time.Time
-	estimatedTokens int          // Estimated tokens for the current request
-	lastTokenUsage  *ai.Usage    // Last response token usage
-	
+	estimatedTokens int       // Estimated tokens for the current request
+	lastTokenUsage  *ai.Usage // Last response token usage
+
 	// Streaming state
 	streamingContent strings.Builder // Buffer for streaming content
 
@@ -152,7 +152,7 @@ func NewModel(opts ModelOptions) Model {
 		loadingStart:    time.Time{},
 		estimatedTokens: 0,
 		lastTokenUsage:  nil,
-		
+
 		// Initialize streaming state
 		streamingContent: strings.Builder{},
 
@@ -227,12 +227,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.logger.Debug("UI model ready")
 
 	case chatResponseMsg:
+		// Use completion tokens for assistant message
+		assistantTokens := 0
+		if msg.TokenUsage != nil {
+			assistantTokens = msg.TokenUsage.CompletionTokens
+		}
+
 		m.messages = append(m.messages, Message{
 			ID:        msg.ID,
 			Content:   msg.Content,
 			Role:      "assistant",
 			Timestamp: time.Now(),
-			Tokens:    msg.Tokens,
+			Tokens:    assistantTokens,
 		})
 		m.loading = false
 		m.lastTokenUsage = msg.TokenUsage
@@ -353,6 +359,13 @@ func (m Model) View() string {
 
 	view.WriteString("\n")
 	view.WriteString(m.renderInput())
+
+	// Token usage display (right-aligned below input)
+	if tokenUsage := m.renderTokenUsage(); tokenUsage != "" {
+		view.WriteString("\n")
+		view.WriteString(tokenUsage)
+	}
+
 	view.WriteString("\n")
 	view.WriteString(m.renderHelpLine())
 
@@ -740,12 +753,24 @@ func (m *Model) sendMessage() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	// Add user message
+	// Estimate tokens for the user message
+	estimatedTokens := 0
+	if m.config != nil && m.config.AI.Model != "" {
+		if tokens, err := EstimateUserMessageTokens(trimmedInput, m.config.AI.Model); err == nil {
+			estimatedTokens = tokens
+			m.estimatedTokens = tokens
+		} else {
+			m.logger.Debug("Failed to estimate tokens", "error", err)
+		}
+	}
+
+	// Add user message with token count
 	userMsg := Message{
 		ID:        generateMessageID(),
 		Content:   trimmedInput,
 		Role:      "user",
 		Timestamp: time.Now(),
+		Tokens:    estimatedTokens,
 	}
 	m.messages = append(m.messages, userMsg)
 
@@ -758,15 +783,6 @@ func (m *Model) sendMessage() (tea.Model, tea.Cmd) {
 	m.error = nil
 	// Reset streaming state
 	m.streamingContent.Reset()
-	
-	// Estimate tokens for the user message
-	if m.config != nil && m.config.AI.Model != "" {
-		if estimatedTokens, err := EstimateUserMessageTokens(trimmedInput, m.config.AI.Model); err == nil {
-			m.estimatedTokens = estimatedTokens
-		} else {
-			m.logger.Debug("Failed to estimate tokens", "error", err)
-		}
-	}
 
 	// Send to chat handler
 	return m, tea.Batch(
@@ -788,7 +804,7 @@ func (m *Model) streamChatResponse(input string) tea.Cmd {
 	return func() tea.Msg {
 		// Call handler without token callback since we're using ChatHandler's internal state
 		response, err := m.chatHandler.HandleMessageWithResponse(m.ctx, input, nil)
-		
+
 		if err != nil {
 			return errorMsg{
 				error:      err,
@@ -820,56 +836,56 @@ func (m Model) renderChat() string {
 			msg.Timestamp.Format("15:04"),
 			msg.Role,
 			msg.Content)
-			
+
 		// Add token count if available (only for user messages)
 		if msg.Tokens > 0 && msg.Role == "user" {
 			msgLine += fmt.Sprintf(" (%d tokens)", msg.Tokens)
 		}
-		
+
 		view += msgLine + "\n"
 	}
 
 	if m.loading {
 		elapsed := time.Since(m.loadingStart)
-		
+
 		// Build the loading message
-		loadingMsg := fmt.Sprintf("\n%s Thinking... (%s)", 
-			m.spinner.View(), 
+		loadingMsg := fmt.Sprintf("\n%s Thinking... (%s)",
+			m.spinner.View(),
 			formatDuration(elapsed))
-		
+
 		// Add token information if available
 		if m.estimatedTokens > 0 {
 			loadingMsg += fmt.Sprintf(" | 送信: ~%d tokens", m.estimatedTokens)
 		}
-		
+
 		// Add streaming token count if receiving
 		if m.chatHandler != nil {
 			currentStreamingTokens := m.chatHandler.GetStreamingTokens()
-			
+
 			// Debug logging
 			debugFile, _ := os.OpenFile("/tmp/coda-debug.log", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
 			if debugFile != nil {
 				fmt.Fprintf(debugFile, "[UI] renderChat: streamingTokens=%d, m.loading=%v\n", currentStreamingTokens, m.loading)
 				debugFile.Close()
 			}
-			
+
 			if currentStreamingTokens > 0 {
-				loadingMsg += fmt.Sprintf(" | 受信中: %d tokens", currentStreamingTokens)
+				loadingMsg += fmt.Sprintf(" | 受信: ~%d tokens", currentStreamingTokens)
 			}
 		}
-		
+
 		// Show completed tokens from last response if available during loading
 		if m.lastTokenUsage != nil && (m.chatHandler == nil || m.chatHandler.GetStreamingTokens() == 0) {
 			loadingMsg += fmt.Sprintf(" | 生成中...")
 		}
-		
+
 		// Add last response token info if available
 		if m.lastTokenUsage != nil {
-			loadingMsg += fmt.Sprintf(" | 前回: %d/%d tokens", 
-				m.lastTokenUsage.PromptTokens, 
+			loadingMsg += fmt.Sprintf(" | 前回: %d/%d tokens",
+				m.lastTokenUsage.PromptTokens,
 				m.lastTokenUsage.CompletionTokens)
 		}
-		
+
 		view += loadingMsg
 	}
 
@@ -943,6 +959,45 @@ func (m Model) renderStatus() string {
 // renderHelpLine renders the help line
 func (m Model) renderHelpLine() string {
 	return " Enter:send, Ctrl+J:newline, F1:help, Ctrl+C:quit"
+}
+
+// renderTokenUsage renders the token usage indicator
+func (m Model) renderTokenUsage() string {
+	if m.config == nil || m.config.AI.Model == "" {
+		return ""
+	}
+
+	modelName := m.config.AI.Model
+	tokenLimit := getModelTokenLimit(modelName)
+	usedTokens := m.calculateSessionTokens()
+
+	// Calculate usage percentage
+	usagePercent := float64(usedTokens) / float64(tokenLimit) * 100
+
+	// Format the usage string
+	usageStr := fmt.Sprintf("トークン使用量: %d / %d (%.1f%%)", usedTokens, tokenLimit, usagePercent)
+
+	// Apply color based on usage
+	var style lipgloss.Style
+	if usagePercent >= 90 {
+		// Red for high usage
+		style = lipgloss.NewStyle().Foreground(lipgloss.Color("9"))
+	} else if usagePercent >= 70 {
+		// Yellow for medium usage
+		style = lipgloss.NewStyle().Foreground(lipgloss.Color("11"))
+	} else {
+		// Green for low usage
+		style = lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
+	}
+
+	// Right-align the usage display
+	totalWidth := m.width - 2
+	if totalWidth < len(usageStr) {
+		return style.Render(usageStr)
+	}
+
+	padding := totalWidth - len(usageStr)
+	return strings.Repeat(" ", padding) + style.Render(usageStr)
 }
 
 // renderInput renders the input area
@@ -1402,4 +1457,68 @@ func (m Model) getCursorLineAndColumn() (int, int) {
 	}
 
 	return line, col
+}
+
+// getModelTokenLimit returns the token limit for the given model
+func getModelTokenLimit(model string) int {
+	// o-series models (o1, o3, etc.) have 200k context
+	if strings.HasPrefix(model, "o") {
+		return 200000
+	}
+
+	// GPT-4 Turbo and newer models
+	if strings.Contains(model, "gpt-4-turbo") || strings.Contains(model, "gpt-4-1106") {
+		return 128000
+	}
+
+	// GPT-4 (older versions)
+	if strings.Contains(model, "gpt-4-32k") {
+		return 32768
+	}
+	if strings.Contains(model, "gpt-4") {
+		return 8192
+	}
+
+	// GPT-3.5 Turbo
+	if strings.Contains(model, "gpt-3.5-turbo-16k") {
+		return 16384
+	}
+	if strings.Contains(model, "gpt-3.5-turbo") {
+		return 4096
+	}
+
+	// Default for unknown models
+	return 8192
+}
+
+// calculateSessionTokens calculates the total token usage for the current session
+func (m Model) calculateSessionTokens() int {
+	totalTokens := 0
+
+	// Add system prompt overhead (rough estimate)
+	// System prompt is typically around 500-1000 tokens depending on configuration
+	systemPromptOverhead := 800
+	totalTokens += systemPromptOverhead
+
+	// Add up tokens from all messages
+	for _, msg := range m.messages {
+		if msg.Tokens > 0 {
+			totalTokens += msg.Tokens
+		}
+	}
+
+	// Add the current estimated tokens if loading
+	if m.loading && m.estimatedTokens > 0 {
+		totalTokens += m.estimatedTokens
+	}
+
+	// Add streaming tokens if available
+	if m.loading && m.chatHandler != nil {
+		streamingTokens := m.chatHandler.GetStreamingTokens()
+		if streamingTokens > 0 {
+			totalTokens += streamingTokens
+		}
+	}
+
+	return totalTokens
 }
