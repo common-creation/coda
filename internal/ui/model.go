@@ -307,6 +307,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.errorDisplay.ToggleDetails()
 		}
 
+	case retryLastActionMsg:
+		// Find the last user message and retry
+		for i := len(m.messages) - 1; i >= 0; i-- {
+			if m.messages[i].Role == "user" {
+				m.currentInput = m.messages[i].Content
+				_, cmd := m.sendMessage()
+				cmds = append(cmds, cmd)
+				break
+			}
+		}
+
 	case clearCtrlCMsg:
 		// Clear the Ctrl+C message if it hasn't been cleared already
 		if m.ctrlCMessage != "" && time.Since(m.lastCtrlCTime) >= time.Second {
@@ -414,6 +425,30 @@ func (m Model) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if debugFile != nil {
 		fmt.Fprintf(debugFile, "[DEBUG] Key pressed: %s, runes: %v, type: %v\n", key, msg.Runes, msg.Type)
 		debugFile.Close()
+	}
+
+	// Handle error-specific key bindings first (when error is displayed)
+	if m.error != nil {
+		switch key {
+		case "enter", "esc":
+			// Dismiss error
+			return m, func() tea.Msg { return dismissErrorMsg{} }
+		case "d":
+			// Toggle error details
+			return m, func() tea.Msg { return toggleErrorDetailsMsg{} }
+		case "r":
+			// Retry last action (if applicable)
+			m.error = nil
+			if m.errorDisplay != nil {
+				m.errorDisplay.SetError(nil)
+			}
+			return m, func() tea.Msg { return retryLastActionMsg{} }
+		case "q":
+			// Quit
+			return m, tea.Quit
+		}
+		// Ignore all other keys when error dialog is shown
+		return m, nil
 	}
 
 	// Handle global keys

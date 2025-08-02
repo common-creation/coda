@@ -53,7 +53,9 @@ var DefaultPromptTemplates = map[string]PromptTemplate{
 {{if .Timestamp}}Current time: {{.Timestamp.Format "2006-01-02 15:04:05"}}{{end}}
 
 You have access to various tools for file operations and can execute them to assist with programming tasks.
-Always be helpful, accurate, and provide clear explanations for your actions.`,
+Always be helpful, accurate, and provide clear explanations for your actions.
+
+When users mention paths starting with @ in their messages, you can read, write, or search these files by using the appropriate tools with those paths.`,
 		Priority: 100,
 	},
 	"tools": {

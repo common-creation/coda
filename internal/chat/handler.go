@@ -48,7 +48,8 @@ func NewChatHandler(aiClient ai.Client, toolManager *tools.Manager, session *Ses
 		history:     history,
 		systemPrompt: "You are CODA (CODing Agent), an AI assistant designed to help developers with coding tasks. " +
 			"You have access to various tools for file operations and can execute them to assist with programming tasks. " +
-			"Always be helpful, accurate, and provide clear explanations for your actions.",
+			"Always be helpful, accurate, and provide clear explanations for your actions. " +
+			"When users mention paths starting with @ in their messages, you can read, write, or search these files by using the appropriate tools with those paths.",
 	}
 
 	// Initialize persistence for auto-save
