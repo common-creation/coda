@@ -15,6 +15,7 @@ const (
 	ModeInsert
 	ModeCommand
 	ModeSearch
+	ModeScroll
 )
 
 // String returns the string representation of the mode
@@ -28,6 +29,8 @@ func (m Mode) String() string {
 		return "COMMAND"
 	case ModeSearch:
 		return "SEARCH"
+	case ModeScroll:
+		return "SCROLL"
 	default:
 		return "UNKNOWN"
 	}

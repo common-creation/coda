@@ -77,6 +77,10 @@ type Styles struct {
 	Code      lipgloss.Style
 	Quote     lipgloss.Style
 	Link      lipgloss.Style
+	
+	// Scrollbar styles
+	ScrollbarTrack lipgloss.Style
+	ScrollbarThumb lipgloss.Style
 	Muted     lipgloss.Style
 	Primary   lipgloss.Style
 	Highlight lipgloss.Style
@@ -279,6 +283,12 @@ func (t *DefaultTheme) GetStyles() Styles {
 		Link: lipgloss.NewStyle().
 			Foreground(colors.Info).
 			Underline(true),
+		
+		ScrollbarTrack: lipgloss.NewStyle().
+			Foreground(colors.Muted),
+		
+		ScrollbarThumb: lipgloss.NewStyle().
+			Foreground(colors.Primary),
 
 		Muted: lipgloss.NewStyle().
 			Foreground(colors.Muted),

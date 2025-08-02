@@ -50,7 +50,7 @@ type InputView struct {
 	// Commands and snippets
 	commands []string
 	snippets map[string]string
-	
+
 	// IME state
 	composing bool
 
@@ -639,20 +639,20 @@ func (iv *InputView) isComposing() bool {
 // This helps prevent interference with IME input
 func (iv *InputView) shouldHandleSpecialKey(msg tea.KeyMsg) bool {
 	key := msg.String()
-	
+
 	// These keys should always be handled specially
 	specialKeys := []string{
 		"ctrl+c", "tab", "shift+tab", "esc",
 		"up", "down", "enter", "ctrl+j",
 		"alt+enter", "ctrl+l", "ctrl+m",
 	}
-	
+
 	for _, sk := range specialKeys {
 		if key == sk {
 			return true
 		}
 	}
-	
+
 	// Don't handle regular character input as special keys
 	// This allows IME to work properly
 	return false

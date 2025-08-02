@@ -110,9 +110,6 @@ type UIConfig struct {
 	// Enable/disable markdown rendering
 	MarkdownRendering bool `yaml:"markdown_rendering" json:"markdown_rendering"`
 
-	// Enable mouse support
-	EnableMouse bool `yaml:"enable_mouse" json:"enable_mouse"`
-
 	// Key bindings preset
 	KeyBindings string `yaml:"key_bindings" json:"key_bindings"`
 
@@ -175,7 +172,6 @@ func NewDefaultConfig() *Config {
 		UI: UIConfig{
 			Theme:              "default",
 			SyntaxHighlighting: true,
-			EnableMouse:        true,
 			MarkdownRendering:  true,
 			KeyBindings:        "default",
 			InputDisplayLines:  3,

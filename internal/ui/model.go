@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/bubbles/spinner"
+	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/log"
@@ -65,7 +66,10 @@ type Model struct {
 	error        error
 
 	// Spinner and timing
-	spinner         spinner.Model
+	spinner spinner.Model
+
+	// Viewport for chat history
+	viewport        viewport.Model
 	loadingStart    time.Time
 	estimatedTokens int       // Estimated tokens for the current request
 	lastTokenUsage  *ai.Usage // Last response token usage
@@ -212,6 +216,7 @@ func (m Model) Init() tea.Cmd {
 	m.logger.Debug("Initializing UI model")
 
 	return tea.Batch(
+		tea.EnterAltScreen,
 		m.spinner.Tick,
 		func() tea.Msg {
 			return readyMsg{}
@@ -223,11 +228,80 @@ func (m Model) Init() tea.Cmd {
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
 
+	// Update viewport only when in scroll mode or for mouse events
+	shouldUpdateViewport := false
+
+	// Check if we're handling input-related keys
+	if keyMsg, ok := msg.(tea.KeyMsg); ok {
+		key := keyMsg.String()
+		
+		// Toggle scroll mode with Ctrl+Y
+		if key == "ctrl+y" {
+			if m.currentMode == ModeScroll {
+				// Return to previous mode
+				m.currentMode = m.previousMode
+			} else {
+				// Enter scroll mode
+				m.previousMode = m.currentMode
+				m.currentMode = ModeScroll
+			}
+			return m, nil
+		}
+		
+		// In scroll mode, allow viewport to handle arrow keys
+		if m.currentMode == ModeScroll {
+			shouldUpdateViewport = true
+		}
+	}
+	
+	// Always allow mouse events to update viewport
+	if _, ok := msg.(tea.MouseMsg); ok {
+		shouldUpdateViewport = true
+	}
+
+	if shouldUpdateViewport {
+		var vpCmd tea.Cmd
+		m.viewport, vpCmd = m.viewport.Update(msg)
+		if vpCmd != nil {
+			cmds = append(cmds, vpCmd)
+		}
+	}
+
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
 		m.logger.Debug("Window resized", "width", m.width, "height", m.height)
+
+		// Calculate viewport dimensions
+		// Reserve space for input, help line, and margins
+		inputHeight := 3  // Input area height
+		helpHeight := 1   // Help line height
+		marginHeight := 3 // Additional margins
+
+		viewportHeight := m.height - inputHeight - helpHeight - marginHeight
+		if viewportHeight < 1 {
+			viewportHeight = 1
+		}
+
+		// Reserve 1 column for scrollbar
+		viewportWidth := m.width - 1
+		if viewportWidth < 1 {
+			viewportWidth = 1
+		}
+
+		// Initialize or update viewport
+		if !m.ready {
+			m.viewport = viewport.New(viewportWidth, viewportHeight)
+			m.viewport.MouseWheelEnabled = true
+			m.viewport.MouseWheelDelta = 3
+		} else {
+			m.viewport.Width = viewportWidth
+			m.viewport.Height = viewportHeight
+		}
+
+		// Update viewport content
+		m.updateViewportContent()
 
 	case spinner.TickMsg:
 		var cmd tea.Cmd
@@ -268,6 +342,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.lastTokenUsage = msg.TokenUsage
 		// Reset streaming state
 		m.streamingContent.Reset()
+		// Update viewport content with new message
+		m.updateViewportContent()
 
 	case errorMsg:
 		m.error = msg.error
@@ -357,10 +433,6 @@ func (m Model) View() string {
 
 	var view strings.Builder
 
-	// Header
-	view.WriteString(m.renderHeader())
-	view.WriteString("\n")
-
 	// Toast notification (appears at top)
 	if m.toast != nil && !m.toast.IsExpired() {
 		view.WriteString(m.toast.Render())
@@ -378,7 +450,36 @@ func (m Model) View() string {
 	if m.showHelp {
 		view.WriteString(m.renderHelp())
 	} else {
-		view.WriteString(m.renderChat())
+		// Render viewport and scrollbar side by side
+		chatView := m.renderChat()
+		scrollbarView := m.renderScrollbar()
+
+		// Split both views into lines
+		chatLines := strings.Split(chatView, "\n")
+		scrollbarLines := strings.Split(scrollbarView, "\n")
+
+		// Combine lines horizontally
+		var combined []string
+		maxLines := len(chatLines)
+		if len(scrollbarLines) > maxLines {
+			maxLines = len(scrollbarLines)
+		}
+
+		for i := 0; i < maxLines; i++ {
+			var chatLine, scrollbarLine string
+
+			if i < len(chatLines) {
+				chatLine = chatLines[i]
+			}
+			if i < len(scrollbarLines) {
+				scrollbarLine = scrollbarLines[i]
+			}
+
+			// Combine the lines
+			combined = append(combined, chatLine+scrollbarLine)
+		}
+
+		view.WriteString(strings.Join(combined, "\n"))
 	}
 
 	// Error banner for less critical errors
@@ -396,6 +497,12 @@ func (m Model) View() string {
 	if status := m.renderStatus(); status != "" {
 		view.WriteString("\n")
 		view.WriteString(status)
+	}
+
+	// Loading message (above input area)
+	if loadingMsg := m.renderLoadingMessage(); loadingMsg != "" {
+		view.WriteString("\n")
+		view.WriteString(loadingMsg)
 	}
 
 	view.WriteString("\n")
@@ -602,6 +709,8 @@ func (m Model) handleKeyPress_OLD(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleCommandModeKeys(msg)
 	case ModeSearch:
 		return m.handleSearchModeKeys(msg)
+	case ModeScroll:
+		return m.handleScrollModeKeys(msg)
 	default:
 		return m, nil
 	}
@@ -822,6 +931,36 @@ func (m Model) handleSearchModeKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// handleScrollModeKeys handles keys in scroll mode
+func (m Model) handleScrollModeKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	key := msg.String()
+	
+	// Exit scroll mode with Esc or Ctrl+Y
+	if key == "esc" || key == "ctrl+y" {
+		m.currentMode = m.previousMode
+		return m, nil
+	}
+	
+	// In scroll mode, let viewport handle arrow keys
+	// The actual scrolling is handled by viewport update in Update()
+	switch key {
+	case "up":
+		m.viewport.LineUp(1)
+	case "down":
+		m.viewport.LineDown(1)
+	case "pgup":
+		m.viewport.ViewUp()
+	case "pgdown":
+		m.viewport.ViewDown()
+	case "home":
+		m.viewport.GotoTop()
+	case "end":
+		m.viewport.GotoBottom()
+	}
+	
+	return m, nil
+}
+
 // sendMessage sends the current input as a chat message
 func (m *Model) sendMessage() (tea.Model, tea.Cmd) {
 	// Trim whitespace and check if empty
@@ -862,6 +1001,8 @@ func (m *Model) sendMessage() (tea.Model, tea.Cmd) {
 		Tokens:    estimatedTokens,
 	}
 	m.messages = append(m.messages, userMsg)
+	// Update viewport content with new message
+	m.updateViewportContent()
 
 	// Clear input and reset cursor
 	m.currentInput = ""
@@ -912,13 +1053,22 @@ func (m *Model) streamChatResponse(input string) tea.Cmd {
 	}
 }
 
-// renderChat renders the chat view
-func (m Model) renderChat() string {
+// updateViewportContent updates the viewport with chat messages
+func (m *Model) updateViewportContent() {
+	var content strings.Builder
+
+	// Always show header (CODA figlet + model info) at the top
+	content.WriteString(m.renderHeader())
+	content.WriteString("\n")
+
 	if len(m.messages) == 0 {
-		return m.renderWelcomeMessage()
+		// Show welcome message if no messages
+		content.WriteString(m.renderWelcomeMessage())
+		m.viewport.SetContent(content.String())
+		return
 	}
 
-	view := ""
+	// Show chat messages
 	for _, msg := range m.messages {
 		// Format the message with timestamp and role
 		msgLine := fmt.Sprintf("[%s] %s: %s",
@@ -926,51 +1076,109 @@ func (m Model) renderChat() string {
 			msg.Role,
 			msg.Content)
 
-		view += msgLine + "\n"
+		content.WriteString(msgLine)
+		content.WriteString("\n")
 	}
 
-	if m.loading {
-		elapsed := time.Since(m.loadingStart)
+	m.viewport.SetContent(content.String())
+	// Auto-scroll to bottom when new content is added
+	m.viewport.GotoBottom()
+}
 
-		// Determine the status message based on streaming tokens
-		statusMsg := "Thinking..."
-		if m.chatHandler != nil && m.chatHandler.GetStreamingTokens() >= 1 {
-			statusMsg = "Answering..."
-		}
+// renderChat renders the chat view using viewport
+func (m Model) renderChat() string {
+	return m.viewport.View()
+}
 
-		// Build the loading message
-		loadingMsg := fmt.Sprintf("\n%s %s (%s)",
-			m.spinner.View(),
-			statusMsg,
-			formatDuration(elapsed))
-
-		// Add token information if available
-		if m.estimatedTokens > 0 {
-			/// DO NOT CHANGE '≈' TO '~'
-			loadingMsg += fmt.Sprintf(" | Send: ≈%d tokens", m.estimatedTokens)
-		}
-
-		// Add streaming token count if receiving
-		if m.chatHandler != nil {
-			currentStreamingTokens := m.chatHandler.GetStreamingTokens()
-
-			// Debug logging
-			debugFile, _ := os.OpenFile("/tmp/coda-debug.log", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
-			if debugFile != nil {
-				fmt.Fprintf(debugFile, "[UI] renderChat: streamingTokens=%d, m.loading=%v, statusMsg=%s\n", currentStreamingTokens, m.loading, statusMsg)
-				debugFile.Close()
-			}
-
-			if currentStreamingTokens > 0 {
-				// DO NOT CHANGE '≈' TO '~'
-				loadingMsg += fmt.Sprintf(" | Receive: ≈%d tokens", currentStreamingTokens)
-			}
-		}
-
-		view += loadingMsg
+// renderLoadingMessage renders the loading message for display above input
+func (m Model) renderLoadingMessage() string {
+	if !m.loading {
+		return ""
 	}
 
-	return view
+	elapsed := time.Since(m.loadingStart)
+
+	// Determine the status message based on streaming tokens
+	statusMsg := "Thinking..."
+	if m.chatHandler != nil && m.chatHandler.GetStreamingTokens() >= 1 {
+		statusMsg = "Answering..."
+	}
+
+	// Build the loading message
+	loadingMsg := fmt.Sprintf("%s %s (%s)",
+		m.spinner.View(),
+		statusMsg,
+		formatDuration(elapsed))
+
+	// Add token information if available
+	if m.estimatedTokens > 0 {
+		/// DO NOT CHANGE '≈' TO '~'
+		loadingMsg += fmt.Sprintf(" | Send: ≈%d tokens", m.estimatedTokens)
+	}
+
+	// Add streaming token count if receiving
+	if m.chatHandler != nil {
+		currentStreamingTokens := m.chatHandler.GetStreamingTokens()
+
+		if currentStreamingTokens > 0 {
+			// DO NOT CHANGE '≈' TO '~'
+			loadingMsg += fmt.Sprintf(" | Receive: ≈%d tokens", currentStreamingTokens)
+		}
+	}
+
+	return loadingMsg
+}
+
+// renderScrollbar renders a vertical scrollbar for the viewport
+func (m Model) renderScrollbar() string {
+	height := m.viewport.Height
+
+	// Don't render scrollbar if content fits in viewport
+	if m.viewport.TotalLineCount() <= m.viewport.VisibleLineCount() {
+		// Return empty scrollbar track
+		var bar strings.Builder
+		for i := 0; i < height; i++ {
+			bar.WriteString(" ")
+			if i < height-1 {
+				bar.WriteString("\n")
+			}
+		}
+		return bar.String()
+	}
+
+	// Calculate scrollbar position and size
+	scrollPercent := m.viewport.ScrollPercent()
+	totalLines := m.viewport.TotalLineCount()
+	visibleLines := m.viewport.VisibleLineCount()
+
+	// Calculate thumb size (minimum 1 line)
+	thumbSize := int(float64(height) * float64(visibleLines) / float64(totalLines))
+	if thumbSize < 1 {
+		thumbSize = 1
+	}
+
+	// Calculate thumb position
+	thumbPosition := int(float64(height-thumbSize) * scrollPercent)
+
+	// Build scrollbar
+	var scrollbar strings.Builder
+	scrollbarStyle := m.styles.ScrollbarTrack
+	thumbStyle := m.styles.ScrollbarThumb
+
+	for i := 0; i < height; i++ {
+		if i >= thumbPosition && i < thumbPosition+thumbSize {
+			// Render thumb
+			scrollbar.WriteString(thumbStyle.Render("█"))
+		} else {
+			// Render track
+			scrollbar.WriteString(scrollbarStyle.Render("│"))
+		}
+		if i < height-1 {
+			scrollbar.WriteString("\n")
+		}
+	}
+
+	return scrollbar.String()
 }
 
 // renderHeader renders the header with border
@@ -1072,11 +1280,14 @@ func (m Model) renderStatus() string {
 
 // renderHelpLine renders the help line
 func (m Model) renderHelpLine() string {
+	if m.currentMode == ModeScroll {
+		return " SCROLL MODE - Arrows:scroll, Home/End:top/bottom, Esc/Ctrl+Y:exit"
+	}
 	if m.ctrlCMessage != "" {
 		// Show warning when Ctrl+C was pressed once
-		return " Enter:send, Ctrl+J:newline, F1:help, Press Ctrl+C again to quit"
+		return " Enter:send, Ctrl+J:newline, Ctrl+Y:scroll mode, F1:help, Press Ctrl+C again to quit"
 	}
-	return " Enter:send, Ctrl+J:newline, F1:help, Ctrl+C:quit"
+	return " Enter:send, Ctrl+J:newline, Ctrl+Y:scroll mode, F1:help, Ctrl+C:quit"
 }
 
 // renderTokenUsage renders the token usage indicator
@@ -1128,7 +1339,7 @@ func (m Model) renderInput() string {
 		content = fmt.Sprintf("%s_", m.commandBuffer)
 	case ModeSearch:
 		content = fmt.Sprintf("%s_", m.searchBuffer)
-	case ModeInsert:
+	case ModeInsert, ModeScroll:
 		return m.renderMultilineInput()
 	case ModeNormal:
 		if m.currentInput != "" {
@@ -1180,8 +1391,13 @@ func (m Model) renderMultilineInput() string {
 			content = fmt.Sprintf("> %s▉", lines[0])
 		}
 
-		// 罫線で囲む
+		// 罫線で囲む（モードに応じて色を変更）
 		style := m.styles.UserInput
+		if m.currentMode == ModeInsert {
+			// Inputモードの場合はコーポレートカラー
+			style = style.BorderForeground(lipgloss.Color("#b40028"))
+		}
+		// Scrollモードその他の場合はデフォルトのグレー
 
 		// ターミナル幅に合わせて調整（左右のパディングとボーダーを考慮）
 		contentWidth := m.width - 4 // ボーダーとパディング分を引く
@@ -1245,8 +1461,13 @@ func (m Model) renderMultilineInput() string {
 			len(lines)-startLine-displayLimit)
 	}
 
-	// 罫線で囲む
+	// 罫線で囲む（モードに応じて色を変更）
 	style := m.styles.UserInput
+	if m.currentMode == ModeInsert {
+		// Inputモードの場合はコーポレートカラー
+		style = style.BorderForeground(lipgloss.Color("#b40028"))
+	}
+	// Scrollモードその他の場合はデフォルトのグレー
 
 	// ターミナル幅に合わせて調整
 	contentWidth := m.width - 4 // ボーダーとパディング分を引く
@@ -1385,6 +1606,8 @@ func (m Model) getCurrentModeString() string {
 		return "COMMAND"
 	case ModeSearch:
 		return "SEARCH"
+	case ModeScroll:
+		return "SCROLL"
 	default:
 		return "UNKNOWN"
 	}
@@ -1588,8 +1811,13 @@ func getModelTokenLimit(model string) int {
 		return 200000
 	}
 
-	// GPT-4 Turbo and newer models
-	if strings.Contains(model, "gpt-4-turbo") || strings.Contains(model, "gpt-4-1106") {
+	// GPT-4.1 models (gpt-4.1, gpt-4.1 mini) have 1M context
+	if strings.HasPrefix(model, "gpt-4.1") {
+		return 1000000
+	}
+
+	// GPT-4 Turbo and newer models or 4-omni
+	if strings.Contains(model, "gpt-4-turbo") || strings.Contains(model, "gpt-4") || strings.HasPrefix(model, "gpt-4o") {
 		return 128000
 	}
 

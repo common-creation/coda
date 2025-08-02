@@ -118,8 +118,7 @@ func (h *E2ETestHelper) setupMocks(workspaceDir, configFile string) error {
 			APIKey:   "test-key",
 		},
 		UI: config.UIConfig{
-			Theme:       "default",
-			EnableMouse: true,
+			Theme: "default",
 		},
 	}
 
