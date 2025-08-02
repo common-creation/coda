@@ -209,7 +209,36 @@ func (h *ChatHandler) HandleMessageWithResponse(ctx context.Context, input strin
 
 			// Handle tool calls
 			if delta.ToolCalls != nil {
-				toolCalls = append(toolCalls, delta.ToolCalls...)
+				for _, tc := range delta.ToolCalls {
+					// Check if this is a continuation of an existing tool call
+					if tc.Index >= 0 && tc.Index < len(toolCalls) {
+						// Update existing tool call
+						if tc.Function.Arguments != "" {
+							toolCalls[tc.Index].Function.Arguments += tc.Function.Arguments
+						}
+						if tc.Function.Name != "" {
+							toolCalls[tc.Index].Function.Name = tc.Function.Name
+						}
+					} else {
+						// New tool call - extend slice if needed
+						for len(toolCalls) <= tc.Index {
+							toolCalls = append(toolCalls, ai.ToolCall{})
+						}
+						if tc.Index >= 0 {
+							// Update by index
+							if tc.Function.Name != "" {
+								toolCalls[tc.Index].Function.Name = tc.Function.Name
+							}
+							if tc.Function.Arguments != "" {
+								toolCalls[tc.Index].Function.Arguments += tc.Function.Arguments
+							}
+							toolCalls[tc.Index].Index = tc.Index
+						} else {
+							// No index, append as new
+							toolCalls = append(toolCalls, tc)
+						}
+					}
+				}
 			}
 		}
 		

@@ -16,6 +16,7 @@ const (
 	ModeCommand
 	ModeSearch
 	ModeScroll
+	ModePermit
 )
 
 // String returns the string representation of the mode
@@ -31,6 +32,8 @@ func (m Mode) String() string {
 		return "SEARCH"
 	case ModeScroll:
 		return "SCROLL"
+	case ModePermit:
+		return "PERMIT"
 	default:
 		return "UNKNOWN"
 	}
@@ -69,6 +72,7 @@ type KeyMap struct {
 	Insert  InsertModeKeyMap
 	Command CommandModeKeyMap
 	Search  SearchModeKeyMap
+	Permit  PermitModeKeyMap
 
 	// Custom bindings loaded from config
 	Custom map[string]key.Binding
@@ -141,6 +145,15 @@ type SearchModeKeyMap struct {
 	Regex         key.Binding
 }
 
+// PermitModeKeyMap defines permit mode bindings for tool call approval
+type PermitModeKeyMap struct {
+	ExitMode    key.Binding // Exit permit mode (reject by default)
+	Approve     key.Binding // Approve the tool call
+	Reject      key.Binding // Reject the tool call
+	SelectPrev  key.Binding // Move selection to previous option (left arrow)
+	SelectNext  key.Binding // Move selection to next option (right arrow)
+}
+
 // DefaultKeyMap returns the default key mappings
 func DefaultKeyMap() KeyMap {
 	return KeyMap{
@@ -175,6 +188,7 @@ func DefaultKeyMap() KeyMap {
 		Insert:  DefaultInsertModeKeyMap(),
 		Command: DefaultCommandModeKeyMap(),
 		Search:  DefaultSearchModeKeyMap(),
+		Permit:  DefaultPermitModeKeyMap(),
 
 		// Custom bindings (empty by default)
 		Custom: make(map[string]key.Binding),
@@ -283,6 +297,17 @@ func DefaultSearchModeKeyMap() SearchModeKeyMap {
 		PrevMatch:     key.NewBinding(key.WithKeys("N", "ctrl+p")),
 		CaseSensitive: key.NewBinding(key.WithKeys("ctrl+i")),
 		Regex:         key.NewBinding(key.WithKeys("ctrl+r")),
+	}
+}
+
+// DefaultPermitModeKeyMap returns the default permit mode key mappings
+func DefaultPermitModeKeyMap() PermitModeKeyMap {
+	return PermitModeKeyMap{
+		ExitMode:   key.NewBinding(key.WithKeys("esc", "ctrl+c")),
+		Approve:    key.NewBinding(key.WithKeys("enter", "y")),
+		Reject:     key.NewBinding(key.WithKeys("n", "esc")),
+		SelectPrev: key.NewBinding(key.WithKeys("left", "h")),
+		SelectNext: key.NewBinding(key.WithKeys("right", "l")),
 	}
 }
 
@@ -452,6 +477,14 @@ func (km KeyMap) GetHelpText(mode Mode) []string {
 		help = append(help, fmt.Sprintf("  %s: Execute search", km.getKeyStrings(km.Search.Execute)))
 		help = append(help, fmt.Sprintf("  %s: Next match", km.getKeyStrings(km.Search.NextMatch)))
 		help = append(help, fmt.Sprintf("  %s: Previous match", km.getKeyStrings(km.Search.PrevMatch)))
+
+	case ModePermit:
+		help = append(help, "Permit Mode Commands:")
+		help = append(help, fmt.Sprintf("  %s: Approve tool call", km.getKeyStrings(km.Permit.Approve)))
+		help = append(help, fmt.Sprintf("  %s: Reject tool call", km.getKeyStrings(km.Permit.Reject)))
+		help = append(help, fmt.Sprintf("  %s: Select previous option", km.getKeyStrings(km.Permit.SelectPrev)))
+		help = append(help, fmt.Sprintf("  %s: Select next option", km.getKeyStrings(km.Permit.SelectNext)))
+		help = append(help, fmt.Sprintf("  %s: Exit permit mode", km.getKeyStrings(km.Permit.ExitMode)))
 	}
 
 	// Add custom bindings if any

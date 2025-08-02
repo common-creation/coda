@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
@@ -87,6 +88,11 @@ type Model struct {
 	searchBuffer  string
 	searchResults []int // indices of matching messages
 	currentMatch  int
+
+	// Tool call permit dialog state
+	pendingToolCalls      []ai.ToolCall // Tool calls waiting for user approval
+	selectedPermitOption  int           // Currently selected option (0=reject, 1=approve)
+	permitDialogVisible   bool          // Whether permit dialog is currently visible
 
 	// Cursor position management
 	cursorPosition int // カーソル位置（rune単位）
@@ -178,6 +184,11 @@ func NewModel(opts ModelOptions) Model {
 		searchBuffer:  "",
 		searchResults: make([]int, 0),
 		currentMatch:  0,
+
+		// Initialize tool call permit dialog state
+		pendingToolCalls:     make([]ai.ToolCall, 0),
+		selectedPermitOption: 0,    // Default to reject (0)
+		permitDialogVisible:  false,
 
 		// Initialize cursor position
 		cursorPosition: 0,
@@ -344,6 +355,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.streamingContent.Reset()
 		// Update viewport content with new message
 		m.updateViewportContent()
+
+		// Check for tool calls and enter permit mode if needed
+		if len(msg.ToolCalls) > 0 {
+			m.pendingToolCalls = msg.ToolCalls
+			m.permitDialogVisible = true
+			m.selectedPermitOption = 0 // Default to reject
+			// Store current mode and switch to permit mode
+			if m.currentMode != ModePermit {
+				m.previousMode = m.currentMode
+				m.currentMode = ModePermit
+			}
+		}
 
 	case errorMsg:
 		m.error = msg.error
@@ -534,6 +557,11 @@ func (m Model) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		debugFile.Close()
 	}
 
+	// Handle Permit mode keys first, before any other processing
+	if m.currentMode == ModePermit {
+		return m.handlePermitModeKeys(msg)
+	}
+
 	// Handle error-specific key bindings first (when error is displayed)
 	if m.error != nil {
 		switch key {
@@ -711,6 +739,8 @@ func (m Model) handleKeyPress_OLD(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleSearchModeKeys(msg)
 	case ModeScroll:
 		return m.handleScrollModeKeys(msg)
+	case ModePermit:
+		return m.handlePermitModeKeys(msg)
 	default:
 		return m, nil
 	}
@@ -961,6 +991,80 @@ func (m Model) handleScrollModeKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// handlePermitModeKeys handles keys in permit mode for tool call approval
+func (m Model) handlePermitModeKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	key := msg.String()
+
+	// Exit permit mode with rejection
+	if m.keymap.IsMatch(key, m.keymap.Permit.ExitMode) {
+		return m.exitPermitMode(false) // false = reject
+	}
+
+	// Approve tool call
+	if m.keymap.IsMatch(key, m.keymap.Permit.Approve) {
+		return m.exitPermitMode(true) // true = approve
+	}
+
+	// Reject tool call
+	if m.keymap.IsMatch(key, m.keymap.Permit.Reject) {
+		return m.exitPermitMode(false) // false = reject
+	}
+
+	// Move selection left (reject)
+	if m.keymap.IsMatch(key, m.keymap.Permit.SelectPrev) {
+		m.selectedPermitOption = 0 // 0 = reject
+		return m, nil
+	}
+
+	// Move selection right (approve)
+	if m.keymap.IsMatch(key, m.keymap.Permit.SelectNext) {
+		m.selectedPermitOption = 1 // 1 = approve
+		return m, nil
+	}
+
+	return m, nil
+}
+
+// exitPermitMode exits permit mode and handles the tool call decision
+func (m *Model) exitPermitMode(approved bool) (tea.Model, tea.Cmd) {
+	// Reset permit dialog state
+	m.permitDialogVisible = false
+	toolCalls := m.pendingToolCalls
+	m.pendingToolCalls = make([]ai.ToolCall, 0)
+	m.selectedPermitOption = 0
+
+	// Return to previous mode
+	m.currentMode = m.previousMode
+
+	if approved {
+		// TODO: Execute tool calls (implement in task-007)
+		m.logger.Debug("Tool calls approved", "count", len(toolCalls))
+		// For now, just add a message indicating approval
+		m.messages = append(m.messages, Message{
+			ID:        generateMessageID(),
+			Content:   fmt.Sprintf("Tool calls approved (%d tools)", len(toolCalls)),
+			Role:      "system",
+			Timestamp: time.Now(),
+			Tokens:    0,
+		})
+	} else {
+		// Tool calls rejected
+		m.logger.Debug("Tool calls rejected", "count", len(toolCalls))
+		m.messages = append(m.messages, Message{
+			ID:        generateMessageID(),
+			Content:   "Tool calls rejected by user",
+			Role:      "system",
+			Timestamp: time.Now(),
+			Tokens:    0,
+		})
+	}
+
+	// Update viewport with new message
+	m.updateViewportContent()
+
+	return m, nil
+}
+
 // sendMessage sends the current input as a chat message
 func (m *Model) sendMessage() (tea.Model, tea.Cmd) {
 	// Trim whitespace and check if empty
@@ -1049,6 +1153,7 @@ func (m *Model) streamChatResponse(input string) tea.Cmd {
 			Content:    response.Content,
 			Tokens:     response.TokenCount,
 			TokenUsage: response.TokenUsage,
+			ToolCalls:  response.ToolCalls,
 		}
 	}
 }
@@ -1283,6 +1388,9 @@ func (m Model) renderHelpLine() string {
 	if m.currentMode == ModeScroll {
 		return " SCROLL MODE - Arrows:scroll, Home/End:top/bottom, Esc/Ctrl+Y:exit"
 	}
+	if m.currentMode == ModePermit {
+		return " PERMIT MODE - Left/Right:select, Enter:confirm, Esc:reject"
+	}
 	if m.ctrlCMessage != "" {
 		// Show warning when Ctrl+C was pressed once
 		return " Enter:send, Ctrl+J:newline, Ctrl+Y:scroll mode, F1:help, Press Ctrl+C again to quit"
@@ -1341,6 +1449,8 @@ func (m Model) renderInput() string {
 		content = fmt.Sprintf("%s_", m.searchBuffer)
 	case ModeInsert, ModeScroll:
 		return m.renderMultilineInput()
+	case ModePermit:
+		return m.renderPermitDialog()
 	case ModeNormal:
 		if m.currentInput != "" {
 			content = fmt.Sprintf("> %s", m.currentInput)
@@ -1478,6 +1588,135 @@ func (m Model) renderMultilineInput() string {
 	return style.Width(contentWidth).Render(result)
 }
 
+// renderPermitDialog renders the tool call permission dialog
+func (m Model) renderPermitDialog() string {
+	if !m.permitDialogVisible || len(m.pendingToolCalls) == 0 {
+		return m.renderMultilineInput() // Fallback to normal input
+	}
+
+	var dialogContent strings.Builder
+	
+	// Dialog title
+	dialogContent.WriteString("🔧 Tool Call Permission Required\n\n")
+	
+	// Show tool details
+	for i, toolCall := range m.pendingToolCalls {
+		if i > 0 {
+			dialogContent.WriteString("\n")
+		}
+		dialogContent.WriteString(fmt.Sprintf("Tool %d: %s\n", i+1, toolCall.Function.Name))
+		
+		// Format and show arguments
+		formattedArgs := m.formatToolArguments(toolCall.Function.Arguments)
+		dialogContent.WriteString(fmt.Sprintf("Arguments:\n%s\n", formattedArgs))
+	}
+	
+	dialogContent.WriteString("\n")
+	
+	// Render selection buttons
+	rejectStyle := lipgloss.NewStyle().
+		Padding(0, 2).
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("241"))
+	
+	approveStyle := lipgloss.NewStyle().
+		Padding(0, 2).
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("241"))
+	
+	// Highlight selected option
+	if m.selectedPermitOption == 0 {
+		// Reject is selected
+		rejectStyle = rejectStyle.
+			BorderForeground(lipgloss.Color("9")).
+			Foreground(lipgloss.Color("9")).
+			Bold(true)
+	} else {
+		// Approve is selected
+		approveStyle = approveStyle.
+			BorderForeground(lipgloss.Color("10")).
+			Foreground(lipgloss.Color("10")).
+			Bold(true)
+	}
+	
+	rejectButton := rejectStyle.Render("拒否")
+	approveButton := approveStyle.Render("許可")
+	
+	// Combine buttons horizontally
+	buttons := lipgloss.JoinHorizontal(lipgloss.Center, rejectButton, "  ", approveButton)
+	dialogContent.WriteString(buttons)
+	
+	dialogContent.WriteString("\n\n")
+	dialogContent.WriteString("矢印キー: 選択, Enter: 決定, Esc: 拒否")
+	
+	// Apply dialog styling
+	dialogStyle := m.styles.UserInput.
+		BorderForeground(lipgloss.Color("#b40028")). // Corporate color for attention
+		Padding(1, 2)
+	
+	// Calculate content width
+	contentWidth := m.width - 4
+	if contentWidth < 40 {
+		contentWidth = 40
+	}
+	
+	return dialogStyle.Width(contentWidth).Render(dialogContent.String())
+}
+
+// formatToolArguments formats JSON arguments in a readable key-value format
+func (m Model) formatToolArguments(args string) string {
+	if args == "" {
+		return "  (no arguments)"
+	}
+
+	// Try to parse as JSON and format nicely
+	var jsonData map[string]interface{}
+	if err := json.Unmarshal([]byte(args), &jsonData); err != nil {
+		// If not valid JSON, just return the raw string (truncated if too long)
+		if len(args) > 200 {
+			return fmt.Sprintf("  %s...", args[:200])
+		}
+		return fmt.Sprintf("  %s", args)
+	}
+
+	// Format as key-value pairs
+	var formatted strings.Builder
+	for key, value := range jsonData {
+		// Format the value based on its type
+		var valueStr string
+		switch v := value.(type) {
+		case string:
+			valueStr = fmt.Sprintf("\"%s\"", v)
+		case bool:
+			valueStr = fmt.Sprintf("%t", v)
+		case float64:
+			// Check if it's actually an integer
+			if v == float64(int64(v)) {
+				valueStr = fmt.Sprintf("%.0f", v)
+			} else {
+				valueStr = fmt.Sprintf("%g", v)
+			}
+		default:
+			// For complex types, use JSON marshaling
+			if jsonBytes, err := json.Marshal(v); err == nil {
+				valueStr = string(jsonBytes)
+			} else {
+				valueStr = fmt.Sprintf("%v", v)
+			}
+		}
+		
+		formatted.WriteString(fmt.Sprintf("  %s: %s\n", key, valueStr))
+	}
+
+	result := formatted.String()
+	if len(result) > 0 {
+		// Remove the last newline
+		result = result[:len(result)-1]
+	}
+	
+	return result
+}
+
 // renderHelp renders the help view
 func (m Model) renderHelp() string {
 	help := "CODA Help - Advanced Key Bindings\n"
@@ -1527,8 +1766,9 @@ type readyMsg struct{}
 type chatResponseMsg struct {
 	ID         string
 	Content    string
-	Tokens     int       // Total tokens (deprecated)
-	TokenUsage *ai.Usage // Detailed token usage
+	Tokens     int           // Total tokens (deprecated)
+	TokenUsage *ai.Usage     // Detailed token usage
+	ToolCalls  []ai.ToolCall // Tool calls requested by AI
 }
 
 type errorMsg struct {
@@ -1608,6 +1848,8 @@ func (m Model) getCurrentModeString() string {
 		return "SEARCH"
 	case ModeScroll:
 		return "SCROLL"
+	case ModePermit:
+		return "PERMIT"
 	default:
 		return "UNKNOWN"
 	}
