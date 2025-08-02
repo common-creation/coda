@@ -30,9 +30,7 @@ import (
 var (
 	cfgFile    string
 	debugMode  bool
-	quiet      bool
 	noColor    bool
-	workingDir string
 	cfg        *config.Config
 	
 	// Version information
@@ -78,23 +76,16 @@ func init() {
 	// Global flags
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.coda/config.yaml)")
 	rootCmd.PersistentFlags().BoolVar(&debugMode, "debug", false, "enable debug mode")
-	rootCmd.PersistentFlags().BoolVar(&quiet, "quiet", false, "suppress non-essential output")
 	rootCmd.PersistentFlags().BoolVar(&noColor, "no-color", false, "disable colored output")
-	rootCmd.PersistentFlags().StringVar(&workingDir, "working-dir", "", "set working directory")
 
 	// Add chat-related flags to root command for direct chat invocation
 	rootCmd.Flags().StringVar(&model, "model", "", "AI model to use (overrides config)")
-	rootCmd.Flags().BoolVar(&noStream, "no-stream", false, "disable streaming responses")
-	rootCmd.Flags().StringVar(&sessionID, "session", "", "specify session ID to load")
 	rootCmd.Flags().BoolVar(&continueSession, "continue", false, "continue last session")
-	rootCmd.Flags().BoolVar(&noTools, "no-tools", false, "disable tool execution")
 	rootCmd.Flags().BoolVar(&autoApprove, "auto-approve", false, "auto-approve all tool executions (use with caution)")
 
 	// Bind flags to viper
 	viper.BindPFlag("debug", rootCmd.PersistentFlags().Lookup("debug"))
-	viper.BindPFlag("quiet", rootCmd.PersistentFlags().Lookup("quiet"))
 	viper.BindPFlag("no_color", rootCmd.PersistentFlags().Lookup("no-color"))
-	viper.BindPFlag("working_dir", rootCmd.PersistentFlags().Lookup("working-dir"))
 
 	// Environment variable support
 	viper.SetEnvPrefix("CODA")
@@ -108,9 +99,7 @@ func initConfig() {
 	var err error
 	cfg, err = loadConfiguration()
 	if err != nil {
-		if !quiet {
-			fmt.Fprintf(os.Stderr, "Warning: Failed to load configuration: %v\n", err)
-		}
+		fmt.Fprintf(os.Stderr, "Warning: Failed to load configuration: %v\n", err)
 		// Use default configuration
 		cfg = config.NewDefaultConfig()
 	}
@@ -121,19 +110,9 @@ func initConfig() {
 		// Note: Verbose field doesn't exist in LoggingConfig
 	}
 
-	// Set working directory
-	if workingDir != "" {
-		if err := os.Chdir(workingDir); err != nil {
-			fmt.Fprintf(os.Stderr, "Error: Failed to change directory to %s: %v\n", workingDir, err)
-			os.Exit(1)
-		}
-	}
-
 	// Initialize logging
 	if err := initializeLogging(cfg); err != nil {
-		if !quiet {
-			fmt.Fprintf(os.Stderr, "Warning: Failed to initialize logging: %v\n", err)
-		}
+		fmt.Fprintf(os.Stderr, "Warning: Failed to initialize logging: %v\n", err)
 	}
 
 	// Disable color if requested
@@ -233,52 +212,39 @@ func IsDebug() bool {
 	return debugMode || viper.GetBool("debug")
 }
 
-// IsQuiet returns whether quiet mode is enabled
-func IsQuiet() bool {
-	return quiet || viper.GetBool("quiet")
-}
-
 // ShowError displays an error message to the user
 func ShowError(format string, args ...interface{}) {
-	if !IsQuiet() {
-		msg := fmt.Sprintf(format, args...)
-		if !noColor && os.Getenv("NO_COLOR") == "" {
-			fmt.Fprintf(os.Stderr, "\033[31mError: %s\033[0m\n", msg)
-		} else {
-			fmt.Fprintf(os.Stderr, "Error: %s\n", msg)
-		}
+	msg := fmt.Sprintf(format, args...)
+	if !noColor && os.Getenv("NO_COLOR") == "" {
+		fmt.Fprintf(os.Stderr, "\033[31mError: %s\033[0m\n", msg)
+	} else {
+		fmt.Fprintf(os.Stderr, "Error: %s\n", msg)
 	}
 }
 
 // ShowWarning displays a warning message to the user
 func ShowWarning(format string, args ...interface{}) {
-	if !IsQuiet() {
-		msg := fmt.Sprintf(format, args...)
-		if !noColor && os.Getenv("NO_COLOR") == "" {
-			fmt.Fprintf(os.Stderr, "\033[33mWarning: %s\033[0m\n", msg)
-		} else {
-			fmt.Fprintf(os.Stderr, "Warning: %s\n", msg)
-		}
+	msg := fmt.Sprintf(format, args...)
+	if !noColor && os.Getenv("NO_COLOR") == "" {
+		fmt.Fprintf(os.Stderr, "\033[33mWarning: %s\033[0m\n", msg)
+	} else {
+		fmt.Fprintf(os.Stderr, "Warning: %s\n", msg)
 	}
 }
 
 // ShowInfo displays an informational message to the user
 func ShowInfo(format string, args ...interface{}) {
-	if !IsQuiet() {
-		msg := fmt.Sprintf(format, args...)
-		fmt.Println(msg)
-	}
+	msg := fmt.Sprintf(format, args...)
+	fmt.Println(msg)
 }
 
 // ShowSuccess displays a success message to the user
 func ShowSuccess(format string, args ...interface{}) {
-	if !IsQuiet() {
-		msg := fmt.Sprintf(format, args...)
-		if !noColor && os.Getenv("NO_COLOR") == "" {
-			fmt.Printf("\033[32m✓ %s\033[0m\n", msg)
-		} else {
-			fmt.Printf("✓ %s\n", msg)
-		}
+	msg := fmt.Sprintf(format, args...)
+	if !noColor && os.Getenv("NO_COLOR") == "" {
+		fmt.Printf("\033[32m✓ %s\033[0m\n", msg)
+	} else {
+		fmt.Printf("✓ %s\n", msg)
 	}
 }
 

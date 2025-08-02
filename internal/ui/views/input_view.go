@@ -53,6 +53,10 @@ type InputView struct {
 	
 	// IME state
 	composing bool
+
+	// Ctrl+C double press handling
+	lastCtrlCTime time.Time
+	ctrlCMessage  string
 }
 
 // InputMode defines the current input mode
@@ -71,6 +75,9 @@ type InputMessage struct {
 	Mode      InputMode
 	Timestamp time.Time
 }
+
+// clearInputCtrlCMsg is sent to clear the Ctrl+C warning message in input view
+type clearInputCtrlCMsg struct{}
 
 // NewInputView creates a new input view
 func NewInputView(width, height int, styles styles.Styles, logger *log.Logger) *InputView {
@@ -229,6 +236,12 @@ func (iv *InputView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.WindowSizeMsg:
 		iv.SetSize(msg.Width, msg.Height)
+
+	case clearInputCtrlCMsg:
+		// Clear the Ctrl+C message if it hasn't been cleared already
+		if iv.ctrlCMessage != "" && time.Since(iv.lastCtrlCTime) >= time.Second {
+			iv.ctrlCMessage = ""
+		}
 	}
 
 	// Check for completion triggers
@@ -244,7 +257,19 @@ func (iv *InputView) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// Global key handlers
 	switch key {
 	case "ctrl+c":
-		return iv, tea.Quit
+		// Check if this is a double press within 1 second
+		now := time.Now()
+		if !iv.lastCtrlCTime.IsZero() && now.Sub(iv.lastCtrlCTime) < time.Second {
+			// Second press within 1 second, quit
+			return iv, tea.Quit
+		}
+		// First press or too much time passed
+		iv.lastCtrlCTime = now
+		iv.ctrlCMessage = "終了するにはもう一度 Ctrl+C を押してください"
+		// Clear message after 1 second
+		return iv, tea.Tick(time.Second, func(t time.Time) tea.Msg {
+			return clearInputCtrlCMsg{}
+		})
 
 	case "tab":
 		if iv.showSuggestions {

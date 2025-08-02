@@ -27,10 +27,7 @@ import (
 // to support both "coda chat" and direct "coda" invocation
 var (
 	model           string
-	noStream        bool
-	sessionID       string
 	continueSession bool
-	noTools         bool
 	autoApprove     bool
 	initialMessage  string  // Initial message to send when starting chat
 )
@@ -48,8 +45,7 @@ through natural language interaction.
 Examples:
   coda chat                    # Start a new chat session
   coda chat --continue         # Continue the last session
-  coda chat --model gpt-4      # Use a specific model
-  coda chat --no-tools         # Disable tool execution`,
+  coda chat --model gpt-4      # Use a specific model`,
 	RunE: runChat,
 }
 
@@ -58,10 +54,7 @@ func init() {
 
 	// Command flags
 	chatCmd.Flags().StringVar(&model, "model", "", "AI model to use (overrides config)")
-	chatCmd.Flags().BoolVar(&noStream, "no-stream", false, "disable streaming responses")
-	chatCmd.Flags().StringVar(&sessionID, "session", "", "specify session ID to load")
 	chatCmd.Flags().BoolVar(&continueSession, "continue", false, "continue last session")
-	chatCmd.Flags().BoolVar(&noTools, "no-tools", false, "disable tool execution")
 	chatCmd.Flags().BoolVar(&autoApprove, "auto-approve", false, "auto-approve all tool executions (use with caution)")
 }
 
@@ -101,14 +94,12 @@ func runTUIChat(ctx context.Context, handler *chat.ChatHandler) error {
 	wrappedValidator := &securityValidatorWrapper{validator: validator}
 	toolManager := tools.NewManager(wrappedValidator, logger)
 	
-	// Register tools unless disabled
-	if !noTools {
-		toolManager.Register(tools.NewReadFileTool(wrappedValidator))
-		toolManager.Register(tools.NewWriteFileTool(wrappedValidator))
-		toolManager.Register(tools.NewEditFileTool(wrappedValidator))
-		toolManager.Register(tools.NewListFilesTool(wrappedValidator))
-		toolManager.Register(tools.NewSearchFilesTool(wrappedValidator))
-	}
+	// Register tools
+	toolManager.Register(tools.NewReadFileTool(wrappedValidator))
+	toolManager.Register(tools.NewWriteFileTool(wrappedValidator))
+	toolManager.Register(tools.NewEditFileTool(wrappedValidator))
+	toolManager.Register(tools.NewListFilesTool(wrappedValidator))
+	toolManager.Register(tools.NewSearchFilesTool(wrappedValidator))
 	
 	// Create and run the Bubbletea UI app
 	app, err := ui.NewApp(ui.AppOptions{
@@ -151,8 +142,8 @@ func setupChatHandler(ctx context.Context) (*chat.ChatHandler, error) {
 	sessionManager := chat.NewSessionManager(30*24*60*60, 1000000) // 30 days, 1M tokens
 
 	// Handle session continuation
-	if continueSession || sessionID != "" {
-		if err := loadPreviousSession(sessionManager, sessionID); err != nil {
+	if continueSession {
+		if err := loadPreviousSession(sessionManager, ""); err != nil {
 			ShowWarning("Failed to load previous session: %v", err)
 		}
 	}
@@ -232,15 +223,12 @@ func createToolManager(cfg *config.Config) (*tools.Manager, error) {
 	// Create tool manager
 	manager := tools.NewManager(wrappedValidator, logger)
 
-	// Register tools unless disabled
-	if !noTools {
-		// Register file tools
-		manager.Register(tools.NewReadFileTool(wrappedValidator))
-		manager.Register(tools.NewWriteFileTool(wrappedValidator))
-		manager.Register(tools.NewEditFileTool(wrappedValidator))
-		manager.Register(tools.NewListFilesTool(wrappedValidator))
-		manager.Register(tools.NewSearchFilesTool(wrappedValidator))
-	}
+	// Register file tools
+	manager.Register(tools.NewReadFileTool(wrappedValidator))
+	manager.Register(tools.NewWriteFileTool(wrappedValidator))
+	manager.Register(tools.NewEditFileTool(wrappedValidator))
+	manager.Register(tools.NewListFilesTool(wrappedValidator))
+	manager.Register(tools.NewSearchFilesTool(wrappedValidator))
 
 	return manager, nil
 }

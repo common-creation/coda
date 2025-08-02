@@ -133,10 +133,8 @@ func getEnabledFeatures() []string {
 	features = append(features, "ai-chat")
 	features = append(features, "multi-model-support")
 
-	// Check if tools are available
-	if !noTools {
-		features = append(features, "tool-execution")
-	}
+	// Tools are always available
+	features = append(features, "tool-execution")
 
 	return features
 }

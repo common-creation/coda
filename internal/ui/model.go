@@ -109,6 +109,10 @@ type Model struct {
 
 	// Initial message to send on startup
 	initialMessage string
+
+	// Ctrl+C double press handling
+	lastCtrlCTime time.Time
+	ctrlCMessage  string
 }
 
 // ModelOptions contains options for creating a new Model
@@ -196,6 +200,10 @@ func NewModel(opts ModelOptions) Model {
 
 		// Set initial message
 		initialMessage: opts.InitialMessage,
+
+		// Initialize Ctrl+C double press handling
+		lastCtrlCTime: time.Time{},
+		ctrlCMessage:  "",
 	}
 }
 
@@ -297,6 +305,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.showErrorDetails = !m.showErrorDetails
 		if m.errorDisplay != nil {
 			m.errorDisplay.ToggleDetails()
+		}
+
+	case clearCtrlCMsg:
+		// Clear the Ctrl+C message if it hasn't been cleared already
+		if m.ctrlCMessage != "" && time.Since(m.lastCtrlCTime) >= time.Second {
+			m.ctrlCMessage = ""
 		}
 
 	case loadingMsg:
@@ -405,7 +419,19 @@ func (m Model) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// Handle global keys
 	switch key {
 	case "ctrl+c":
-		return m, tea.Quit
+		// Check if this is a double press within 1 second
+		now := time.Now()
+		if !m.lastCtrlCTime.IsZero() && now.Sub(m.lastCtrlCTime) < time.Second {
+			// Second press within 1 second, quit
+			return m, tea.Quit
+		}
+		// First press or too much time passed
+		m.lastCtrlCTime = now
+		m.ctrlCMessage = "終了するにはもう一度 Ctrl+C を押してください"
+		// Clear message after 1 second
+		return m, tea.Tick(time.Second, func(t time.Time) tea.Msg {
+			return clearCtrlCMsg{}
+		})
 	case "f1":
 		if !m.loading {
 			m.showHelp = !m.showHelp
@@ -1011,6 +1037,10 @@ func (m Model) renderStatus() string {
 
 // renderHelpLine renders the help line
 func (m Model) renderHelpLine() string {
+	if m.ctrlCMessage != "" {
+		// Show warning when Ctrl+C was pressed once
+		return " Enter:send, Ctrl+J:newline, F1:help, Press Ctrl+C again to quit"
+	}
 	return " Enter:send, Ctrl+J:newline, F1:help, Ctrl+C:quit"
 }
 
@@ -1215,7 +1245,7 @@ func (m Model) renderHelp() string {
 	help += "- Custom key bindings can be defined in config file\n"
 	help += "- Key conflict detection and validation\n\n"
 
-	help += "Press ? again to return to chat\n"
+	help += "Press F1 again to return to chat\n"
 	return help
 }
 
@@ -1265,6 +1295,9 @@ type retryLastActionMsg struct{}
 type loadingMsg struct {
 	loading bool
 }
+
+// clearCtrlCMsg is sent to clear the Ctrl+C warning message
+type clearCtrlCMsg struct{}
 
 // executeCommand executes a command mode command
 func (m *Model) executeCommand(command string) tea.Cmd {
