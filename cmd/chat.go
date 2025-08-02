@@ -25,6 +25,8 @@ import (
 	"github.com/common-creation/coda/internal/ui"
 )
 
+// These variables are shared between root.go and chat.go
+// to support both "coda chat" and direct "coda" invocation
 var (
 	model           string
 	noStream        bool
@@ -33,6 +35,7 @@ var (
 	noTools         bool
 	autoApprove     bool
 	useTUI          bool
+	initialMessage  string  // Initial message to send when starting chat
 )
 
 // chatCmd represents the chat command
@@ -81,6 +84,11 @@ func runChat(cmd *cobra.Command, args []string) error {
 		cancel()
 	}()
 
+	// If args are provided, use them as the initial message
+	if len(args) > 0 {
+		initialMessage = strings.Join(args, " ")
+	}
+
 	// Setup chat components
 	handler, err := setupChatHandler(ctx)
 	if err != nil {
@@ -118,10 +126,11 @@ func runTUIChat(ctx context.Context, handler *chat.ChatHandler) error {
 	
 	// Create and run the Bubbletea UI app
 	app, err := ui.NewApp(ui.AppOptions{
-		Config:      cfg,
-		ChatHandler: handler,
-		ToolManager: toolManager,
-		Logger:      nil, // Will use default logger
+		Config:         cfg,
+		ChatHandler:    handler,
+		ToolManager:    toolManager,
+		Logger:         nil, // Will use default logger
+		InitialMessage: initialMessage,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to create app: %w", err)
@@ -133,6 +142,14 @@ func runTUIChat(ctx context.Context, handler *chat.ChatHandler) error {
 func runCLIChat(ctx context.Context, handler *chat.ChatHandler) error {
 	// Show welcome message
 	showWelcomeMessage()
+
+	// Process initial message if provided
+	if initialMessage != "" {
+		ShowInfo("> %s", initialMessage)
+		if err := handler.HandleMessage(ctx, initialMessage); err != nil {
+			ShowError("Failed to process initial message: %v", err)
+		}
+	}
 
 	// Main chat loop
 	reader := bufio.NewReader(os.Stdin)

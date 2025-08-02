@@ -82,6 +82,17 @@ func init() {
 	rootCmd.PersistentFlags().BoolVar(&noColor, "no-color", false, "disable colored output")
 	rootCmd.PersistentFlags().StringVar(&workingDir, "working-dir", "", "set working directory")
 
+	// Add chat-related flags to root command for direct chat invocation
+	rootCmd.Flags().StringVar(&model, "model", "", "AI model to use (overrides config)")
+	rootCmd.Flags().BoolVar(&noStream, "no-stream", false, "disable streaming responses")
+	rootCmd.Flags().StringVar(&sessionID, "session", "", "specify session ID to load")
+	rootCmd.Flags().BoolVar(&continueSession, "continue", false, "continue last session")
+	rootCmd.Flags().BoolVar(&noTools, "no-tools", false, "disable tool execution")
+	rootCmd.Flags().BoolVar(&autoApprove, "auto-approve", false, "auto-approve all tool executions (use with caution)")
+	rootCmd.Flags().BoolVar(&useTUI, "tui", true, "use interactive TUI interface")
+	rootCmd.Flags().BoolVar(&useTUI, "ui", true, "use interactive TUI interface (alias for --tui)")
+	rootCmd.Flags().Bool("no-tui", false, "disable TUI interface")
+
 	// Bind flags to viper
 	viper.BindPFlag("debug", rootCmd.PersistentFlags().Lookup("debug"))
 	viper.BindPFlag("quiet", rootCmd.PersistentFlags().Lookup("quiet"))
@@ -188,8 +199,28 @@ func disableColors() {
 
 // runRoot is executed when no subcommands are provided
 func runRoot(cmd *cobra.Command, args []string) error {
+	// Check if help flag is set
+	helpFlag, _ := cmd.Flags().GetBool("help")
+	if helpFlag {
+		return cmd.Help()
+	}
+	
+	// If any arguments are provided, or if we should start chat by default,
+	// run the chat command directly
+	if len(args) > 0 || shouldStartChatByDefault() {
+		// Execute chat command with the provided arguments
+		return runChat(cmd, args)
+	}
+	
 	// Default behavior: show help
 	return cmd.Help()
+}
+
+// shouldStartChatByDefault determines if chat should start when no subcommands are provided
+func shouldStartChatByDefault() bool {
+	// For now, always start chat when no subcommand is provided
+	// This could be configurable in the future
+	return true
 }
 
 // GetConfig returns the loaded configuration

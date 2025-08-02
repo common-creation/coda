@@ -170,10 +170,7 @@ func (t *DefaultTheme) GetStyles() Styles {
 		Header: lipgloss.NewStyle().
 			Bold(true).
 			Foreground(colors.Primary).
-			BorderStyle(lipgloss.NormalBorder()).
-			BorderBottom(true).
-			BorderForeground(colors.Border).
-			Padding(0, 1),
+			Padding(1, 0, 0, 1),
 
 		Footer: lipgloss.NewStyle().
 			Foreground(colors.Muted).

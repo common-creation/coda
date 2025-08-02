@@ -106,16 +106,20 @@ type Model struct {
 
 	// Configuration
 	keymap KeyMap
+
+	// Initial message to send on startup
+	initialMessage string
 }
 
 // ModelOptions contains options for creating a new Model
 type ModelOptions struct {
-	Config       *config.Config
-	ChatHandler  *chat.ChatHandler
-	ToolManager  *tools.Manager
-	Logger       *log.Logger
-	Context      context.Context
-	ErrorHandler *errors.ErrorHandler
+	Config         *config.Config
+	ChatHandler    *chat.ChatHandler
+	ToolManager    *tools.Manager
+	Logger         *log.Logger
+	Context        context.Context
+	ErrorHandler   *errors.ErrorHandler
+	InitialMessage string // Initial message to send on startup
 }
 
 // NewModel creates a new UI model
@@ -189,12 +193,16 @@ func NewModel(opts ModelOptions) Model {
 
 		// Set keymap
 		keymap: DefaultKeyMap(),
+
+		// Set initial message
+		initialMessage: opts.InitialMessage,
 	}
 }
 
 // Init implements tea.Model interface
 func (m Model) Init() tea.Cmd {
 	m.logger.Debug("Initializing UI model")
+
 	return tea.Batch(
 		m.spinner.Tick,
 		func() tea.Msg {
@@ -225,6 +233,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case readyMsg:
 		m.ready = true
 		m.logger.Debug("UI model ready")
+
+		// Send initial message if provided
+		if m.initialMessage != "" {
+			m.currentInput = m.initialMessage
+			m.initialMessage = "" // Clear to prevent re-sending
+			_, cmd := m.sendMessage()
+			cmds = append(cmds, cmd)
+		}
 
 	case chatResponseMsg:
 		// Use completion tokens for assistant message
@@ -753,15 +769,27 @@ func (m *Model) sendMessage() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	// Estimate tokens for the user message
+	// Estimate tokens for the user message (for display in message list)
 	estimatedTokens := 0
 	if m.config != nil && m.config.AI.Model != "" {
 		if tokens, err := EstimateUserMessageTokens(trimmedInput, m.config.AI.Model); err == nil {
 			estimatedTokens = tokens
-			m.estimatedTokens = tokens
 		} else {
-			m.logger.Debug("Failed to estimate tokens", "error", err)
+			m.logger.Debug("Failed to estimate user message tokens", "error", err)
 		}
+	}
+
+	// Estimate total prompt tokens (for display during thinking)
+	if m.chatHandler != nil {
+		if promptTokens, err := m.chatHandler.EstimatePromptTokens(trimmedInput); err == nil {
+			m.estimatedTokens = promptTokens
+		} else {
+			// Fallback to just user message tokens
+			m.estimatedTokens = estimatedTokens
+			m.logger.Debug("Failed to estimate prompt tokens", "error", err)
+		}
+	} else {
+		m.estimatedTokens = estimatedTokens
 	}
 
 	// Add user message with token count
@@ -837,25 +865,28 @@ func (m Model) renderChat() string {
 			msg.Role,
 			msg.Content)
 
-		// Add token count if available (only for user messages)
-		if msg.Tokens > 0 && msg.Role == "user" {
-			msgLine += fmt.Sprintf(" (%d tokens)", msg.Tokens)
-		}
-
 		view += msgLine + "\n"
 	}
 
 	if m.loading {
 		elapsed := time.Since(m.loadingStart)
 
+		// Determine the status message based on streaming tokens
+		statusMsg := "Thinking..."
+		if m.chatHandler != nil && m.chatHandler.GetStreamingTokens() >= 1 {
+			statusMsg = "Answering..."
+		}
+
 		// Build the loading message
-		loadingMsg := fmt.Sprintf("\n%s Thinking... (%s)",
+		loadingMsg := fmt.Sprintf("\n%s %s (%s)",
 			m.spinner.View(),
+			statusMsg,
 			formatDuration(elapsed))
 
 		// Add token information if available
 		if m.estimatedTokens > 0 {
-			loadingMsg += fmt.Sprintf(" | 送信: ~%d tokens", m.estimatedTokens)
+			/// DO NOT CHANGE '≈' TO '~'
+			loadingMsg += fmt.Sprintf(" | 送信: ≈%d tokens", m.estimatedTokens)
 		}
 
 		// Add streaming token count if receiving
@@ -865,12 +896,13 @@ func (m Model) renderChat() string {
 			// Debug logging
 			debugFile, _ := os.OpenFile("/tmp/coda-debug.log", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
 			if debugFile != nil {
-				fmt.Fprintf(debugFile, "[UI] renderChat: streamingTokens=%d, m.loading=%v\n", currentStreamingTokens, m.loading)
+				fmt.Fprintf(debugFile, "[UI] renderChat: streamingTokens=%d, m.loading=%v, statusMsg=%s\n", currentStreamingTokens, m.loading, statusMsg)
 				debugFile.Close()
 			}
 
 			if currentStreamingTokens > 0 {
-				loadingMsg += fmt.Sprintf(" | 受信: ~%d tokens", currentStreamingTokens)
+				// DO NOT CHANGE '≈' TO '~'
+				loadingMsg += fmt.Sprintf(" | 受信: ≈%d tokens", currentStreamingTokens)
 			}
 		}
 
@@ -893,23 +925,53 @@ func (m Model) renderChat() string {
 }
 
 // renderHeader renders the header with border
-func (m Model) renderHeader() string {
-	// Create header content
-	content := `𝑪𝑶𝑫𝑨 - CODing Agent`
+func (m Model) renderHeader() string { // Create header content ( DO NOT format below figlet )
+	figlet := ` ▄████████  ▄██████▄  ████████▄     ▄████████
+███    ███ ███    ███ ███   ▀███   ███    ███
+███    █▀  ███    ███ ███    ███   ███    ███
+███        ███    ███ ███    ███   ███    ███
+███        ███    ███ ███    ███ ▀███████████
+███    █▄  ███    ███ ███    ███   ███    ███
+███    ███ ███    ███ ███   ▄███   ███    ███
+████████▀   ▀██████▀  ████████▀    ███    █▀
+`
 
-	// Use the same style as input area
-	style := m.styles.UserInput
+	// Split figlet into lines
+	lines := strings.Split(strings.TrimSpace(figlet), "\n")
 
-	// Calculate width
-	contentWidth := m.width - 4
-	if contentWidth < 20 {
-		contentWidth = 20
+	// Define gradient colors from light to dark red
+	// Starting color: #ff6b7d (light red)
+	// Ending color: #b40028 (corporate color)
+	gradientColors := []string{
+		"#ff6b7d", // Lightest
+		"#f55a6e",
+		"#eb495f",
+		"#e13850",
+		"#d72741",
+		"#cd1632",
+		"#c30529",
+		"#b40028", // Corporate color (darkest)
 	}
 
-	// Center the text
-	centeredStyle := style.Width(contentWidth).Align(lipgloss.Center)
+	// Apply gradient to each line
+	var styledLines []string
+	for i, line := range lines {
+		// Create style for this line with gradient color
+		lineStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color(gradientColors[i])).
+			Bold(true)
 
-	return centeredStyle.Render(content)
+		styledLines = append(styledLines, lineStyle.Render(line))
+	}
+
+	// Join the styled lines
+	content := strings.Join(styledLines, "\n")
+
+	// Apply container style (padding, etc.) but not color
+	containerStyle := m.styles.Header.
+		Foreground(lipgloss.NoColor{}) // Remove foreground color from container
+
+	return containerStyle.Render(content + "\n")
 }
 
 // renderWelcomeMessage renders the welcome message box
@@ -939,7 +1001,10 @@ func (m Model) renderWelcomeMessage() string {
 	style := m.styles.UserInput
 
 	// Calculate width
-	contentWidth := m.width - 4
+	contentWidth := len(cwd) + 4 + 10
+	if m.width-4 < contentWidth {
+		contentWidth = m.width - 4
+	}
 	if contentWidth < 40 {
 		contentWidth = 40
 	}
@@ -975,7 +1040,8 @@ func (m Model) renderTokenUsage() string {
 	usagePercent := float64(usedTokens) / float64(tokenLimit) * 100
 
 	// Format the usage string
-	usageStr := fmt.Sprintf("トークン使用量: %d / %d (%.1f%%)", usedTokens, tokenLimit, usagePercent)
+	// DO NOT CHANGE '≈' TO '~'
+	usageStr := fmt.Sprintf("Context usage: ≈%d / %d (%.1f%%)", usedTokens, tokenLimit, usagePercent)
 
 	// Apply color based on usage
 	var style lipgloss.Style
@@ -1495,10 +1561,25 @@ func getModelTokenLimit(model string) int {
 func (m Model) calculateSessionTokens() int {
 	totalTokens := 0
 
-	// Add system prompt overhead (rough estimate)
-	// System prompt is typically around 500-1000 tokens depending on configuration
-	systemPromptOverhead := 800
-	totalTokens += systemPromptOverhead
+	// Calculate actual system prompt tokens
+	if m.chatHandler != nil {
+		systemPrompt := m.chatHandler.GetSystemPrompt()
+		if systemPrompt != "" && m.config != nil && m.config.AI.Model != "" {
+			// Use tokenizer for accurate system prompt token count
+			systemTokens, err := EstimateUserMessageTokens(systemPrompt, m.config.AI.Model)
+			if err != nil {
+				// Fallback to rough estimate on error
+				systemTokens = 800
+			}
+			totalTokens += systemTokens
+		} else {
+			// Fallback if no handler or config available
+			totalTokens += 800
+		}
+	} else {
+		// Fallback if no handler available
+		totalTokens += 800
+	}
 
 	// Add up tokens from all messages
 	for _, msg := range m.messages {

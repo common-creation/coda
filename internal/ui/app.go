@@ -32,10 +32,11 @@ type App struct {
 
 // AppOptions contains options for creating a new App
 type AppOptions struct {
-	Config      *config.Config
-	ChatHandler *chat.ChatHandler
-	ToolManager *tools.Manager
-	Logger      *log.Logger
+	Config         *config.Config
+	ChatHandler    *chat.ChatHandler
+	ToolManager    *tools.Manager
+	Logger         *log.Logger
+	InitialMessage string // Initial message to send on startup
 }
 
 // NewApp creates a new TUI application instance
@@ -57,11 +58,12 @@ func NewApp(opts AppOptions) (*App, error) {
 
 	// Create the model with dependencies
 	model := NewModel(ModelOptions{
-		Config:      opts.Config,
-		ChatHandler: opts.ChatHandler,
-		ToolManager: opts.ToolManager,
-		Logger:      opts.Logger,
-		Context:     ctx,
+		Config:         opts.Config,
+		ChatHandler:    opts.ChatHandler,
+		ToolManager:    opts.ToolManager,
+		Logger:         opts.Logger,
+		Context:        ctx,
+		InitialMessage: opts.InitialMessage,
 	})
 
 	// Configure program options
@@ -93,8 +95,6 @@ func NewApp(opts AppOptions) (*App, error) {
 
 // Run starts the application and handles the main event loop
 func (a *App) Run() error {
-	a.logger.Info("Starting CODA TUI application")
-
 	// Setup signal handlers
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)

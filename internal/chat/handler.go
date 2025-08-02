@@ -218,18 +218,29 @@ func (h *ChatHandler) HandleMessageWithResponse(ctx context.Context, input strin
 			if delta.Content != "" {
 				fullContent.WriteString(delta.Content)
 				
-				// Calculate tokens for current content
-				// Try to get more accurate token count using the model info
+				// Calculate tokens for current content using tokenizer
 				estimatedTokens := 0
 				contentStr := fullContent.String()
 				
-				// For now, use simple estimation
-				// TODO: Integrate tiktoken-go here for accurate counting
+				// Use tokenizer for accurate token counting
 				if len(contentStr) > 0 {
-					// Rough estimation: ~4 characters per token for English
-					// For Japanese/Chinese, it's closer to 2-3 characters per token
+					// Get model from config
+					model := h.config.AI.Model
+					if model == "" {
+						model = "gpt-4" // Fallback to default
+					}
+					
+					// Calculate tokens using simple estimation
+					// TODO: Once tokenizer is in a separate package, use accurate counting
 					runeCount := len([]rune(contentStr))
-					estimatedTokens = runeCount / 3 // More accurate for mixed content
+					estimatedTokens = runeCount / 3 // Rough estimation for mixed content
+					
+					// Debug logging
+					debugFile, _ := os.OpenFile("/tmp/coda-debug.log", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+					if debugFile != nil {
+						fmt.Fprintf(debugFile, "[ChatHandler] Token estimation: runeCount=%d, estimatedTokens=%d\n", runeCount, estimatedTokens)
+						debugFile.Close()
+					}
 				}
 				
 				// Update ChatHandler's streaming tokens
@@ -581,6 +592,35 @@ func (h *ChatHandler) GetStreamingTokens() int {
 	}
 	
 	return h.streamingTokens
+}
+
+// EstimatePromptTokens estimates the token count for a potential message
+func (h *ChatHandler) EstimatePromptTokens(userInput string) (int, error) {
+	// Get current session
+	currentSession := h.session.GetCurrent()
+	
+	// Calculate total content length
+	totalContent := ""
+	
+	// Add system prompt
+	totalContent += h.systemPrompt + " "
+	
+	// Add session messages if available
+	if currentSession != nil {
+		for _, msg := range currentSession.Messages {
+			totalContent += msg.Content + " "
+		}
+	}
+	
+	// Add the potential user message
+	totalContent += userInput
+	
+	// Simple token estimation
+	// TODO: Once tokenizer is in a separate package, use accurate counting
+	runeCount := len([]rune(totalContent))
+	estimatedTokens := runeCount / 3 // Rough estimation for mixed content
+	
+	return estimatedTokens, nil
 }
 
 // truncateString truncates a string to the specified length
