@@ -47,7 +47,7 @@ type PromptTemplate struct {
 var DefaultPromptTemplates = map[string]PromptTemplate{
 	"base": {
 		Name: "base",
-		Template: `You are CODA (Coding Agent), an AI assistant designed to help developers with coding tasks.
+		Template: `You are CODA (CODing Agent), an AI assistant designed to help developers with coding tasks.
 {{if .WorkingDir}}Current directory: {{.WorkingDir}}{{end}}
 {{if .Platform}}Platform: {{.Platform}}{{end}}
 {{if .Timestamp}}Current time: {{.Timestamp.Format "2006-01-02 15:04:05"}}{{end}}

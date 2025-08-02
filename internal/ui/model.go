@@ -7,10 +7,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/log"
 
+	"github.com/common-creation/coda/internal/ai"
 	"github.com/common-creation/coda/internal/chat"
 	"github.com/common-creation/coda/internal/config"
 	"github.com/common-creation/coda/internal/errors"
@@ -61,6 +63,15 @@ type Model struct {
 	showHelp     bool
 	loading      bool
 	error        error
+	
+	// Spinner and timing
+	spinner         spinner.Model
+	loadingStart    time.Time
+	estimatedTokens int          // Estimated tokens for the current request
+	lastTokenUsage  *ai.Usage    // Last response token usage
+	
+	// Streaming state
+	streamingContent strings.Builder // Buffer for streaming content
 
 	// Styles
 	styles styles.Styles
@@ -117,6 +128,11 @@ func NewModel(opts ModelOptions) Model {
 
 	theme := styles.GetTheme(themeName)
 
+	// Initialize spinner
+	s := spinner.New()
+	s.Spinner = spinner.Dot
+	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
+
 	return Model{
 		// Initialize UI state
 		width:  80,
@@ -130,6 +146,15 @@ func NewModel(opts ModelOptions) Model {
 		showHelp:     false,
 		loading:      false,
 		error:        nil,
+
+		// Initialize spinner and timing
+		spinner:         s,
+		loadingStart:    time.Time{},
+		estimatedTokens: 0,
+		lastTokenUsage:  nil,
+		
+		// Initialize streaming state
+		streamingContent: strings.Builder{},
 
 		// Initialize styles
 		styles: theme.GetStyles(),
@@ -171,7 +196,7 @@ func NewModel(opts ModelOptions) Model {
 func (m Model) Init() tea.Cmd {
 	m.logger.Debug("Initializing UI model")
 	return tea.Batch(
-		tea.EnterAltScreen,
+		m.spinner.Tick,
 		func() tea.Msg {
 			return readyMsg{}
 		},
@@ -187,6 +212,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		m.logger.Debug("Window resized", "width", m.width, "height", m.height)
+
+	case spinner.TickMsg:
+		var cmd tea.Cmd
+		m.spinner, cmd = m.spinner.Update(msg)
+		return m, cmd
 
 	case tea.KeyMsg:
 		// Handle key events
@@ -205,6 +235,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			Tokens:    msg.Tokens,
 		})
 		m.loading = false
+		m.lastTokenUsage = msg.TokenUsage
+		// Reset streaming state
+		m.streamingContent.Reset()
 
 	case errorMsg:
 		m.error = msg.error
@@ -246,11 +279,25 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case loadingMsg:
 		m.loading = msg.loading
+
+	case tokenUpdateMsg:
+		// This is a polling tick to update the UI during streaming
+		if m.loading {
+			// Continue ticking while loading
+			cmds = append(cmds, m.tickForTokenUpdates())
+			cmds = append(cmds, m.spinner.Tick)
+		}
+		return m, tea.Batch(cmds...)
 	}
 
 	// Update view components (when implemented)
 	// m.chatView, cmd = m.chatView.Update(msg)
 	// cmds = append(cmds, cmd)
+
+	// Keep spinner ticking while loading
+	if m.loading {
+		cmds = append(cmds, m.spinner.Tick)
+	}
 
 	return m, tea.Batch(cmds...)
 }
@@ -686,7 +733,7 @@ func (m Model) handleSearchModeKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 // sendMessage sends the current input as a chat message
-func (m Model) sendMessage() (tea.Model, tea.Cmd) {
+func (m *Model) sendMessage() (tea.Model, tea.Cmd) {
 	// Trim whitespace and check if empty
 	trimmedInput := strings.TrimSpace(m.currentInput)
 	if trimmedInput == "" {
@@ -707,25 +754,55 @@ func (m Model) sendMessage() (tea.Model, tea.Cmd) {
 	m.cursorPosition = 0
 	m.cursorColumn = 0
 	m.loading = true
+	m.loadingStart = time.Now()
 	m.error = nil
+	// Reset streaming state
+	m.streamingContent.Reset()
+	
+	// Estimate tokens for the user message
+	if m.config != nil && m.config.AI.Model != "" {
+		if estimatedTokens, err := EstimateUserMessageTokens(trimmedInput, m.config.AI.Model); err == nil {
+			m.estimatedTokens = estimatedTokens
+		} else {
+			m.logger.Debug("Failed to estimate tokens", "error", err)
+		}
+	}
 
 	// Send to chat handler
-	return m, func() tea.Msg {
-		// Process message through chat handler
-		// Get response from chat handler
-		response, err := m.chatHandler.HandleMessageWithResponse(m.ctx, trimmedInput)
+	return m, tea.Batch(
+		m.spinner.Tick,
+		m.streamChatResponse(trimmedInput),
+		m.tickForTokenUpdates(), // Poll for token updates during streaming
+	)
+}
+
+// tickForTokenUpdates polls for token updates during streaming
+func (m Model) tickForTokenUpdates() tea.Cmd {
+	return tea.Tick(100*time.Millisecond, func(t time.Time) tea.Msg {
+		return tokenUpdateMsg{receivedTokens: -1} // Special value to trigger a check
+	})
+}
+
+// streamChatResponse handles the streaming chat response
+func (m *Model) streamChatResponse(input string) tea.Cmd {
+	return func() tea.Msg {
+		// Call handler without token callback since we're using ChatHandler's internal state
+		response, err := m.chatHandler.HandleMessageWithResponse(m.ctx, input, nil)
+		
 		if err != nil {
 			return errorMsg{
 				error:      err,
 				userAction: "sending message",
-				metadata:   map[string]interface{}{"message": trimmedInput},
+				metadata:   map[string]interface{}{"message": input},
 			}
 		}
 
+		// Return the complete response
 		return chatResponseMsg{
-			ID:      generateMessageID(),
-			Content: response.Content,
-			Tokens:  response.TokenCount,
+			ID:         generateMessageID(),
+			Content:    response.Content,
+			Tokens:     response.TokenCount,
+			TokenUsage: response.TokenUsage,
 		}
 	}
 }
@@ -738,14 +815,62 @@ func (m Model) renderChat() string {
 
 	view := ""
 	for _, msg := range m.messages {
-		view += fmt.Sprintf("[%s] %s: %s\n",
+		// Format the message with timestamp and role
+		msgLine := fmt.Sprintf("[%s] %s: %s",
 			msg.Timestamp.Format("15:04"),
 			msg.Role,
 			msg.Content)
+			
+		// Add token count if available (only for user messages)
+		if msg.Tokens > 0 && msg.Role == "user" {
+			msgLine += fmt.Sprintf(" (%d tokens)", msg.Tokens)
+		}
+		
+		view += msgLine + "\n"
 	}
 
 	if m.loading {
-		view += "\n🤔 Thinking..."
+		elapsed := time.Since(m.loadingStart)
+		
+		// Build the loading message
+		loadingMsg := fmt.Sprintf("\n%s Thinking... (%s)", 
+			m.spinner.View(), 
+			formatDuration(elapsed))
+		
+		// Add token information if available
+		if m.estimatedTokens > 0 {
+			loadingMsg += fmt.Sprintf(" | 送信: ~%d tokens", m.estimatedTokens)
+		}
+		
+		// Add streaming token count if receiving
+		if m.chatHandler != nil {
+			currentStreamingTokens := m.chatHandler.GetStreamingTokens()
+			
+			// Debug logging
+			debugFile, _ := os.OpenFile("/tmp/coda-debug.log", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+			if debugFile != nil {
+				fmt.Fprintf(debugFile, "[UI] renderChat: streamingTokens=%d, m.loading=%v\n", currentStreamingTokens, m.loading)
+				debugFile.Close()
+			}
+			
+			if currentStreamingTokens > 0 {
+				loadingMsg += fmt.Sprintf(" | 受信中: %d tokens", currentStreamingTokens)
+			}
+		}
+		
+		// Show completed tokens from last response if available during loading
+		if m.lastTokenUsage != nil && (m.chatHandler == nil || m.chatHandler.GetStreamingTokens() == 0) {
+			loadingMsg += fmt.Sprintf(" | 生成中...")
+		}
+		
+		// Add last response token info if available
+		if m.lastTokenUsage != nil {
+			loadingMsg += fmt.Sprintf(" | 前回: %d/%d tokens", 
+				m.lastTokenUsage.PromptTokens, 
+				m.lastTokenUsage.CompletionTokens)
+		}
+		
+		view += loadingMsg
 	}
 
 	return view
@@ -754,7 +879,7 @@ func (m Model) renderChat() string {
 // renderHeader renders the header with border
 func (m Model) renderHeader() string {
 	// Create header content
-	content := " 𝑪𝑶𝑫𝑨 - CODing Agent "
+	content := `𝑪𝑶𝑫𝑨 - CODing Agent`
 
 	// Use the same style as input area
 	style := m.styles.UserInput
@@ -993,13 +1118,22 @@ func (m Model) SaveState() error {
 	return nil
 }
 
+// formatDuration formats a duration in a human-readable way
+func formatDuration(d time.Duration) string {
+	if d < time.Second {
+		return fmt.Sprintf("%.1fms", float64(d.Milliseconds()))
+	}
+	return fmt.Sprintf("%.1fs", d.Seconds())
+}
+
 // Message types for Bubbletea
 type readyMsg struct{}
 
 type chatResponseMsg struct {
-	ID      string
-	Content string
-	Tokens  int
+	ID         string
+	Content    string
+	Tokens     int       // Total tokens (deprecated)
+	TokenUsage *ai.Usage // Detailed token usage
 }
 
 type errorMsg struct {
@@ -1009,6 +1143,11 @@ type errorMsg struct {
 }
 
 type dismissErrorMsg struct{}
+
+// tokenUpdateMsg is sent during streaming to update token count
+type tokenUpdateMsg struct {
+	receivedTokens int // Current number of tokens received
+}
 
 type toggleErrorDetailsMsg struct{}
 

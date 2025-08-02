@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-CODA (Coding Agent) is a CLI-based AI coding assistant written in Go. It leverages OpenAI/Azure OpenAI models and provides a rich terminal interface using Bubbletea framework.
+CODA (CODing Agent) is a CLI-based AI coding assistant written in Go. It leverages OpenAI/Azure OpenAI models and provides a rich terminal interface using Bubbletea framework.
 
 ## Essential Commands
 

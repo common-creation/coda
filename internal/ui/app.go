@@ -66,11 +66,10 @@ func NewApp(opts AppOptions) (*App, error) {
 
 	// Configure program options
 	var programOpts []tea.ProgramOption
-	programOpts = append(programOpts, tea.WithAltScreen())
 
 	// Enable mouse support if configured
 	if opts.Config.UI.EnableMouse {
-		programOpts = append(programOpts, tea.WithMouseCellMotion())
+		programOpts = append(programOpts)
 	}
 
 	program := tea.NewProgram(model, programOpts...)

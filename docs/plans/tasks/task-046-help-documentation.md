@@ -6,7 +6,7 @@
 ## 実装内容
 1. ヘルプテキストの改善:
    ```go
-   rootCmd.Long = `CODA (Coding Agent) is an AI-powered assistant that helps you
+   rootCmd.Long = `CODA (CODing Agent) is an AI-powered assistant that helps you
    write, understand, and manage code through natural language interaction.
    
    It provides intelligent code suggestions, can read and modify files,

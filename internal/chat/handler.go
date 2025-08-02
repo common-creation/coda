@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/common-creation/coda/internal/ai"
@@ -21,13 +23,19 @@ type ChatHandler struct {
 	history      *History
 	systemPrompt string
 	persistence  *FilePersistence
+	
+	// Streaming state
+	streamingTokens int
+	streamingMutex  sync.Mutex
 }
 
 // ChatResponse represents a response from the chat handler
 type ChatResponse struct {
-	Content    string
-	TokenCount int
-	ToolCalls  []ai.ToolCall
+	Content          string
+	TokenCount       int           // Total token count (deprecated, use TokenUsage.TotalTokens)
+	ToolCalls        []ai.ToolCall
+	TokenUsage       *ai.Usage     // Detailed token usage from AI response
+	EstimatedPrompt  int           // Estimated prompt tokens (before sending)
 }
 
 // NewChatHandler creates a new chat handler
@@ -38,7 +46,7 @@ func NewChatHandler(aiClient ai.Client, toolManager *tools.Manager, session *Ses
 		session:     session,
 		config:      cfg,
 		history:     history,
-		systemPrompt: "You are CODA (Coding Agent), an AI assistant designed to help developers with coding tasks. " +
+		systemPrompt: "You are CODA (CODing Agent), an AI assistant designed to help developers with coding tasks. " +
 			"You have access to various tools for file operations and can execute them to assist with programming tasks. " +
 			"Always be helpful, accurate, and provide clear explanations for your actions.",
 	}
@@ -113,7 +121,7 @@ func (h *ChatHandler) HandleMessage(ctx context.Context, input string) error {
 }
 
 // HandleMessageWithResponse processes a user message and returns the response for TUI mode
-func (h *ChatHandler) HandleMessageWithResponse(ctx context.Context, input string) (*ChatResponse, error) {
+func (h *ChatHandler) HandleMessageWithResponse(ctx context.Context, input string, tokenCallback func(int)) (*ChatResponse, error) {
 	// Trim and validate input
 	input = strings.TrimSpace(input)
 	if input == "" {
@@ -150,36 +158,123 @@ func (h *ChatHandler) HandleMessageWithResponse(ctx context.Context, input strin
 	// Build messages for AI request
 	messages := h.buildMessages(currentSession)
 
-	// Create chat request
+	// Create chat request with streaming enabled
 	req := ai.ChatRequest{
 		Model:       h.config.AI.Model,
 		Messages:    messages,
 		Temperature: &h.config.AI.Temperature,
 		MaxTokens:   &h.config.AI.MaxTokens,
 		Tools:       h.getToolDefinitions(),
-		Stream:      false, // Use non-streaming for TUI to simplify initial implementation
+		Stream:      true, // Enable streaming
 	}
 
-	// Send request to AI
-	completion, err := h.aiClient.ChatCompletion(ctx, req)
+	// Send request to AI with streaming
+	stream, err := h.aiClient.ChatCompletionStream(ctx, req)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get chat completion: %w", err)
+		return nil, fmt.Errorf("failed to create chat stream: %w", err)
 	}
+	defer stream.Close()
 
-	if len(completion.Choices) == 0 {
-		return nil, fmt.Errorf("no response from AI")
-	}
-
-	message := completion.Choices[0].Message
+	// Process streaming response
+	var fullContent strings.Builder
+	var toolCalls []ai.ToolCall
+	var totalUsage ai.Usage
 	
-	// Add assistant message to session
-	assistantMessage := ai.Message{
-		Role:      ai.RoleAssistant,
-		Content:   message.Content,
-		ToolCalls: message.ToolCalls,
+	// Reset streaming tokens at start
+	h.streamingMutex.Lock()
+	h.streamingTokens = 0
+	h.streamingMutex.Unlock()
+	
+	// Debug logging
+	debugFile, _ := os.OpenFile("/tmp/coda-debug.log", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+	if debugFile != nil {
+		fmt.Fprintf(debugFile, "[ChatHandler] Starting streaming response processing\n")
+		debugFile.Close()
+	}
+	
+	chunkCount := 0
+	for {
+		chunk, err := stream.Read()
+		if err == io.EOF {
+			// Debug logging
+			debugFile, _ := os.OpenFile("/tmp/coda-debug.log", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+			if debugFile != nil {
+				fmt.Fprintf(debugFile, "[ChatHandler] Stream ended, totalChunks: %d\n", chunkCount)
+				debugFile.Close()
+			}
+			break
+		}
+		if err != nil {
+			return nil, fmt.Errorf("error reading stream: %w", err)
+		}
+
+		chunkCount++
+
+		// Process chunk
+		if chunk.Choices != nil && len(chunk.Choices) > 0 {
+			delta := chunk.Choices[0].Delta
+
+			// Handle content
+			if delta.Content != "" {
+				fullContent.WriteString(delta.Content)
+				
+				// Calculate tokens for current content
+				// Try to get more accurate token count using the model info
+				estimatedTokens := 0
+				contentStr := fullContent.String()
+				
+				// For now, use simple estimation
+				// TODO: Integrate tiktoken-go here for accurate counting
+				if len(contentStr) > 0 {
+					// Rough estimation: ~4 characters per token for English
+					// For Japanese/Chinese, it's closer to 2-3 characters per token
+					runeCount := len([]rune(contentStr))
+					estimatedTokens = runeCount / 3 // More accurate for mixed content
+				}
+				
+				// Update ChatHandler's streaming tokens
+				h.streamingMutex.Lock()
+				h.streamingTokens = estimatedTokens
+				h.streamingMutex.Unlock()
+				
+				// Debug logging
+				debugFile, _ := os.OpenFile("/tmp/coda-debug.log", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+				if debugFile != nil {
+					fmt.Fprintf(debugFile, "[ChatHandler] Token update: chunk: %d, deltaContent: %q, totalLen: %d, tokens: %d\n",
+						chunkCount, delta.Content, fullContent.Len(), estimatedTokens)
+					debugFile.Close()
+				}
+				
+				// Call the callback if provided
+				if tokenCallback != nil {
+					tokenCallback(estimatedTokens)
+				}
+			}
+
+			// Handle tool calls
+			if delta.ToolCalls != nil {
+				toolCalls = append(toolCalls, delta.ToolCalls...)
+			}
+		}
+		
+		// Note: Usage information is typically not available in streaming chunks
+		// It will be estimated after streaming completes
 	}
 
-	if err := h.session.AddMessage(currentSession.ID, assistantMessage); err != nil {
+	// Reset streaming tokens after streaming completes
+	h.streamingMutex.Lock()
+	h.streamingTokens = 0
+	h.streamingMutex.Unlock()
+
+	// Create final message
+	message := ai.Message{
+		Role:      ai.RoleAssistant,
+		Content:   fullContent.String(),
+		ToolCalls: toolCalls,
+	}
+
+	// Add assistant message to session
+	if err := h.session.AddMessage(currentSession.ID, message); err != nil {
 		return nil, fmt.Errorf("failed to add assistant message: %w", err)
 	}
 
@@ -194,18 +289,25 @@ func (h *ChatHandler) HandleMessageWithResponse(ctx context.Context, input strin
 	}
 
 	// Process tool calls if any (TUI should handle this asynchronously)
-	if len(message.ToolCalls) > 0 {
+	if len(toolCalls) > 0 {
 		// For now, just include a note about tool calls
-		toolCallInfo := fmt.Sprintf("\n\n[Tool calls requested: %d]", len(message.ToolCalls))
+		toolCallInfo := fmt.Sprintf("\n\n[Tool calls requested: %d]", len(toolCalls))
 		message.Content += toolCallInfo
 	}
 
-	tokenCount := completion.Usage.TotalTokens
+	// If usage wasn't provided in stream, estimate it
+	if totalUsage.TotalTokens == 0 {
+		// Rough estimation
+		totalUsage.CompletionTokens = fullContent.Len() / 4
+		totalUsage.TotalTokens = totalUsage.CompletionTokens
+	}
 
 	return &ChatResponse{
 		Content:    message.Content,
-		TokenCount: tokenCount,
-		ToolCalls:  message.ToolCalls,
+		TokenCount: totalUsage.TotalTokens,
+		ToolCalls:  toolCalls,
+		TokenUsage: &totalUsage,
+		// EstimatedPrompt will be set by the UI layer using tiktoken
 	}, nil
 }
 
@@ -462,6 +564,23 @@ func (h *ChatHandler) SetSystemPrompt(prompt string) {
 // GetSystemPrompt returns the current system prompt
 func (h *ChatHandler) GetSystemPrompt() string {
 	return h.systemPrompt
+}
+
+// GetStreamingTokens returns the current number of tokens received during streaming
+func (h *ChatHandler) GetStreamingTokens() int {
+	h.streamingMutex.Lock()
+	defer h.streamingMutex.Unlock()
+	
+	// Debug logging
+	if h.streamingTokens > 0 {
+		debugFile, _ := os.OpenFile("/tmp/coda-debug.log", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+		if debugFile != nil {
+			fmt.Fprintf(debugFile, "[ChatHandler] GetStreamingTokens called, returning: %d\n", h.streamingTokens)
+			debugFile.Close()
+		}
+	}
+	
+	return h.streamingTokens
 }
 
 // truncateString truncates a string to the specified length

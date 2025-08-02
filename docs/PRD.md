@@ -1,8 +1,8 @@
-# Product Requirements Document - CODA (Coding Agent)
+# Product Requirements Document - CODA (CODing Agent)
 
 ## 1. プロジェクト概要
 
-CODA（Coding Agent）は、Goで実装されたCLIベースのコーディングアシスタントです。OpenAI（Azure OpenAI対応）のLLMを活用し、ファイルの読み書き、コード編集、プロジェクト管理などの開発タスクを支援します。Bubbleteaフレームワークを使用した洗練されたターミナルインターフェースを提供します。
+CODA（CODing Agent）は、Goで実装されたCLIベースのコーディングアシスタントです。OpenAI（Azure OpenAI対応）のLLMを活用し、ファイルの読み書き、コード編集、プロジェクト管理などの開発タスクを支援します。Bubbleteaフレームワークを使用した洗練されたターミナルインターフェースを提供します。
 
 ## 2. 目的と目標
 
@@ -118,7 +118,7 @@ tools:
 ### 6.1 画面レイアウト
 ```
 ┌─────────────────────────────────────────┐
-│  CODA - Coding Agent          [Model: gpt-4] │
+│  CODA - CODing Agent          [Model: gpt-4] │
 ├─────────────────────────────────────────┤
 │                                         │
 │  Chat History                          │

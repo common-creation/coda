@@ -2,7 +2,7 @@
 
 ## Overview
 
-CODA (Coding Agent) follows a modular, layered architecture with clear separation of concerns. The system is designed to be extensible, testable, and maintainable while providing a rich user experience through a terminal-based interface.
+CODA (CODing Agent) follows a modular, layered architecture with clear separation of concerns. The system is designed to be extensible, testable, and maintainable while providing a rich user experience through a terminal-based interface.
 
 ## High-Level Architecture
 
