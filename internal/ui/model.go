@@ -886,7 +886,7 @@ func (m Model) renderChat() string {
 		// Add token information if available
 		if m.estimatedTokens > 0 {
 			/// DO NOT CHANGE '≈' TO '~'
-			loadingMsg += fmt.Sprintf(" | 送信: ≈%d tokens", m.estimatedTokens)
+			loadingMsg += fmt.Sprintf(" | Send: ≈%d tokens", m.estimatedTokens)
 		}
 
 		// Add streaming token count if receiving
@@ -902,20 +902,8 @@ func (m Model) renderChat() string {
 
 			if currentStreamingTokens > 0 {
 				// DO NOT CHANGE '≈' TO '~'
-				loadingMsg += fmt.Sprintf(" | 受信: ≈%d tokens", currentStreamingTokens)
+				loadingMsg += fmt.Sprintf(" | Receive: ≈%d tokens", currentStreamingTokens)
 			}
-		}
-
-		// Show completed tokens from last response if available during loading
-		if m.lastTokenUsage != nil && (m.chatHandler == nil || m.chatHandler.GetStreamingTokens() == 0) {
-			loadingMsg += fmt.Sprintf(" | 生成中...")
-		}
-
-		// Add last response token info if available
-		if m.lastTokenUsage != nil {
-			loadingMsg += fmt.Sprintf(" | 前回: %d/%d tokens",
-				m.lastTokenUsage.PromptTokens,
-				m.lastTokenUsage.CompletionTokens)
 		}
 
 		view += loadingMsg

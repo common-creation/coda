@@ -89,9 +89,6 @@ func init() {
 	rootCmd.Flags().BoolVar(&continueSession, "continue", false, "continue last session")
 	rootCmd.Flags().BoolVar(&noTools, "no-tools", false, "disable tool execution")
 	rootCmd.Flags().BoolVar(&autoApprove, "auto-approve", false, "auto-approve all tool executions (use with caution)")
-	rootCmd.Flags().BoolVar(&useTUI, "tui", true, "use interactive TUI interface")
-	rootCmd.Flags().BoolVar(&useTUI, "ui", true, "use interactive TUI interface (alias for --tui)")
-	rootCmd.Flags().Bool("no-tui", false, "disable TUI interface")
 
 	// Bind flags to viper
 	viper.BindPFlag("debug", rootCmd.PersistentFlags().Lookup("debug"))

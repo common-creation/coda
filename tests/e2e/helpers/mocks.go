@@ -3,13 +3,91 @@ package helpers
 import (
 	"context"
 	"fmt"
+	"io"
 	"sync"
 	"time"
 
 	"github.com/common-creation/coda/internal/ai"
-	"github.com/common-creation/coda/internal/chat"
 	"github.com/common-creation/coda/internal/tools"
 )
+
+// mockStreamReader implements ai.StreamReader interface
+type mockStreamReader struct {
+	responses []string
+	index     int
+	position  int
+	latency   time.Duration
+	error     bool
+	errorMsg  string
+	ctx       context.Context
+	done      bool
+}
+
+func (r *mockStreamReader) Read() (*ai.StreamChunk, error) {
+	// Check if already done
+	if r.done {
+		return nil, io.EOF
+	}
+
+	// Simulate latency
+	if r.latency > 0 {
+		time.Sleep(r.latency)
+	}
+
+	// Check for simulated error
+	if r.error {
+		r.done = true
+		return nil, fmt.Errorf("mock streaming error: %s", r.errorMsg)
+	}
+
+	// Check if we have responses
+	if len(r.responses) == 0 {
+		r.done = true
+		return nil, fmt.Errorf("no mock responses configured")
+	}
+
+	// Get current response
+	response := r.responses[r.index%len(r.responses)]
+	
+	// Check if we've sent all content
+	if r.position >= len(response) {
+		r.done = true
+		return nil, io.EOF
+	}
+
+	// Send next character
+	char := string(response[r.position])
+	r.position++
+
+	chunk := &ai.StreamChunk{
+		ID:      fmt.Sprintf("mock-stream-%d-%d", r.index, r.position),
+		Object:  "chat.completion.chunk",
+		Created: time.Now().Unix(),
+		Model:   "mock-model",
+		Choices: []ai.StreamChoice{
+			{
+				Index: 0,
+				Delta: ai.StreamDelta{
+					Content: char,
+				},
+				FinishReason: nil,
+			},
+		},
+	}
+
+	// If this was the last character, mark as finished
+	if r.position >= len(response) {
+		stop := "stop"
+		chunk.Choices[0].FinishReason = &stop
+	}
+
+	return chunk, nil
+}
+
+func (r *mockStreamReader) Close() error {
+	r.done = true
+	return nil
+}
 
 // MockAIClient is a mock implementation of ai.Client for testing
 type MockAIClient struct {
@@ -70,8 +148,8 @@ func (m *MockAIClient) GetCallHistory() []ai.ChatRequest {
 	return append([]ai.ChatRequest(nil), m.callHistory...)
 }
 
-// Chat implements ai.Client interface
-func (m *MockAIClient) Chat(ctx context.Context, req ai.ChatRequest) (*ai.ChatResponse, error) {
+// ChatCompletion implements ai.Client interface
+func (m *MockAIClient) ChatCompletion(ctx context.Context, req ai.ChatRequest) (*ai.ChatResponse, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -98,71 +176,47 @@ func (m *MockAIClient) Chat(ctx context.Context, req ai.ChatRequest) (*ai.ChatRe
 
 	return &ai.ChatResponse{
 		ID:      fmt.Sprintf("mock-response-%d", m.responseIndex),
-		Content: response,
+		Object:  "chat.completion",
+		Created: time.Now().Unix(),
 		Model:   "mock-model",
-		Usage: ai.TokenUsage{
+		Choices: []ai.Choice{
+			{
+				Index: 0,
+				Message: ai.Message{
+					Role:    ai.RoleAssistant,
+					Content: response,
+				},
+				FinishReason: "stop",
+			},
+		},
+		Usage: ai.Usage{
 			PromptTokens:     10,
 			CompletionTokens: 20,
 			TotalTokens:      30,
 		},
-		FinishReason: "stop",
 	}, nil
 }
 
 // StreamChat implements ai.Client interface
-func (m *MockAIClient) StreamChat(ctx context.Context, req ai.ChatRequest) (<-chan ai.StreamResponse, error) {
+func (m *MockAIClient) ChatCompletionStream(ctx context.Context, req ai.ChatRequest) (ai.StreamReader, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	// Record the call
 	m.callHistory = append(m.callHistory, req)
 
-	ch := make(chan ai.StreamResponse, 10)
+	// Create a mock stream reader
+	reader := &mockStreamReader{
+		responses: m.responses,
+		index:     m.responseIndex,
+		latency:   m.simulateLatency,
+		error:     m.simulateError,
+		errorMsg:  m.errorMessage,
+		ctx:       ctx,
+	}
+	m.responseIndex++
 
-	go func() {
-		defer close(ch)
-
-		// Simulate latency
-		if m.simulateLatency > 0 {
-			time.Sleep(m.simulateLatency)
-		}
-
-		// Check for simulated error
-		if m.simulateError {
-			ch <- ai.StreamResponse{
-				Error: fmt.Errorf("mock streaming error: %s", m.errorMessage),
-			}
-			return
-		}
-
-		// Get the current response
-		if len(m.responses) == 0 {
-			ch <- ai.StreamResponse{
-				Error: fmt.Errorf("no mock responses configured"),
-			}
-			return
-		}
-
-		response := m.responses[m.responseIndex%len(m.responses)]
-		m.responseIndex++
-
-		// Stream the response word by word
-		words := []rune(response)
-		for i, char := range words {
-			select {
-			case <-ctx.Done():
-				return
-			case ch <- ai.StreamResponse{
-				ID:      fmt.Sprintf("mock-stream-%d-%d", m.responseIndex, i),
-				Content: string(char),
-				Done:    i == len(words)-1,
-			}:
-				time.Sleep(10 * time.Millisecond) // Simulate streaming delay
-			}
-		}
-	}()
-
-	return ch, nil
+	return reader, nil
 }
 
 // MockChatHandler is a mock implementation of chat.ChatHandler for testing
@@ -189,7 +243,7 @@ func NewMockChatHandler(aiClient ai.Client, toolManager tools.Manager) *MockChat
 // MockSession represents a mock chat session
 type MockSession struct {
 	ID       string
-	Messages []chat.Message
+	Messages []ai.Message
 	Active   bool
 }
 
@@ -205,25 +259,23 @@ func (m *MockChatHandler) HandleMessage(ctx context.Context, message string, ses
 	if !exists {
 		session = &MockSession{
 			ID:       sessionID,
-			Messages: make([]chat.Message, 0),
+			Messages: make([]ai.Message, 0),
 			Active:   true,
 		}
 		m.sessions[sessionID] = session
 	}
 
 	// Add user message
-	userMsg := chat.Message{
-		ID:        fmt.Sprintf("user-%d", time.Now().UnixNano()),
-		Content:   message,
-		Role:      "user",
-		Timestamp: time.Now(),
+	userMsg := ai.Message{
+		Role:    ai.RoleUser,
+		Content: message,
 	}
 	session.Messages = append(session.Messages, userMsg)
 
 	// Generate AI response
-	resp, err := m.aiClient.Chat(ctx, ai.ChatRequest{
+	resp, err := m.aiClient.ChatCompletion(ctx, ai.ChatRequest{
 		Messages: []ai.Message{
-			{Role: "user", Content: message},
+			{Role: ai.RoleUser, Content: message},
 		},
 	})
 	if err != nil {
@@ -231,14 +283,10 @@ func (m *MockChatHandler) HandleMessage(ctx context.Context, message string, ses
 	}
 
 	// Add assistant message
-	assistantMsg := chat.Message{
-		ID:        resp.ID,
-		Content:   resp.Content,
-		Role:      "assistant",
-		Timestamp: time.Now(),
-		Tokens:    resp.Usage.TotalTokens,
+	if len(resp.Choices) > 0 {
+		assistantMsg := resp.Choices[0].Message
+		session.Messages = append(session.Messages, assistantMsg)
 	}
-	session.Messages = append(session.Messages, assistantMsg)
 
 	return nil
 }

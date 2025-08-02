@@ -4,10 +4,8 @@ Copyright © 2025 CODA Project
 package cmd
 
 import (
-	"bufio"
 	"context"
 	"fmt"
-	"io"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -34,7 +32,6 @@ var (
 	continueSession bool
 	noTools         bool
 	autoApprove     bool
-	useTUI          bool
 	initialMessage  string  // Initial message to send when starting chat
 )
 
@@ -44,7 +41,7 @@ var chatCmd = &cobra.Command{
 	Short: "Start an interactive chat session",
 	Long: `Start an interactive chat session with the AI assistant.
 
-The chat command provides an interactive interface for conversing with AI models.
+The chat command provides a TUI (Terminal User Interface) for conversing with AI models.
 You can ask questions, request code analysis, and perform various development tasks
 through natural language interaction.
 
@@ -66,9 +63,6 @@ func init() {
 	chatCmd.Flags().BoolVar(&continueSession, "continue", false, "continue last session")
 	chatCmd.Flags().BoolVar(&noTools, "no-tools", false, "disable tool execution")
 	chatCmd.Flags().BoolVar(&autoApprove, "auto-approve", false, "auto-approve all tool executions (use with caution)")
-	chatCmd.Flags().BoolVar(&useTUI, "tui", true, "use interactive TUI interface (default: true)")
-	chatCmd.Flags().BoolVar(&useTUI, "ui", true, "use interactive TUI interface (alias for --tui)")
-	chatCmd.Flags().Bool("no-tui", false, "disable TUI interface")
 }
 
 func runChat(cmd *cobra.Command, args []string) error {
@@ -95,16 +89,8 @@ func runChat(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to setup chat handler: %w", err)
 	}
 
-	// Check if --no-tui flag was set
-	noTUI, _ := cmd.Flags().GetBool("no-tui")
-	
-	// Use TUI mode by default or if explicitly enabled
-	if useTUI && !noTUI {
-		return runTUIChat(ctx, handler)
-	}
-
-	// Run traditional CLI mode
-	return runCLIChat(ctx, handler)
+	// Always use TUI mode
+	return runTUIChat(ctx, handler)
 }
 
 func runTUIChat(ctx context.Context, handler *chat.ChatHandler) error {
@@ -139,61 +125,6 @@ func runTUIChat(ctx context.Context, handler *chat.ChatHandler) error {
 	return app.Run()
 }
 
-func runCLIChat(ctx context.Context, handler *chat.ChatHandler) error {
-	// Show welcome message
-	showWelcomeMessage()
-
-	// Process initial message if provided
-	if initialMessage != "" {
-		ShowInfo("> %s", initialMessage)
-		if err := handler.HandleMessage(ctx, initialMessage); err != nil {
-			ShowError("Failed to process initial message: %v", err)
-		}
-	}
-
-	// Main chat loop
-	reader := bufio.NewReader(os.Stdin)
-
-	for {
-		// Check context cancellation
-		select {
-		case <-ctx.Done():
-			return nil
-		default:
-		}
-
-		// Show prompt
-		fmt.Print("\n> ")
-
-		// Read input
-		input, err := readInput(reader)
-		if err != nil {
-			if err == io.EOF {
-				ShowInfo("\nGoodbye!")
-				return nil
-			}
-			ShowError("Failed to read input: %v", err)
-			continue
-		}
-
-		// Check for exit commands
-		if shouldExit(input) {
-			ShowInfo("Goodbye!")
-			return nil
-		}
-
-		// Handle empty input
-		if strings.TrimSpace(input) == "" {
-			continue
-		}
-
-		// Process message
-		if err := handler.HandleMessage(ctx, input); err != nil {
-			ShowError("Failed to process message: %v", err)
-			continue
-		}
-	}
-}
 
 func setupChatHandler(ctx context.Context) (*chat.ChatHandler, error) {
 	cfg := GetConfig()
@@ -363,34 +294,6 @@ func loadPreviousSession(sessionManager *chat.SessionManager, specificID string)
 	return nil
 }
 
-func showWelcomeMessage() {
-	ShowInfo(`
-Welcome to CODA - Your AI Coding Assistant
-
-Type your questions or requests below. Special commands:
-  /help    - Show help information
-  /clear   - Clear the current session
-  /save    - Save the current session
-  /exit    - Exit the chat
-
-Press Ctrl+C to exit at any time.
-`)
-}
-
-func readInput(reader *bufio.Reader) (string, error) {
-	// Read single line for now
-	// TODO: Implement multi-line input support
-	line, err := reader.ReadString('\n')
-	if err != nil {
-		return "", err
-	}
-	return strings.TrimSpace(line), nil
-}
-
-func shouldExit(input string) bool {
-	input = strings.ToLower(strings.TrimSpace(input))
-	return input == "exit" || input == "quit" || input == "/exit" || input == "/quit"
-}
 
 func getDataDir() string {
 	// Get data directory

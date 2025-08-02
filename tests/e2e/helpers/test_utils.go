@@ -121,13 +121,6 @@ func (h *E2ETestHelper) setupMocks(workspaceDir, configFile string) error {
 			Theme:       "default",
 			EnableMouse: true,
 		},
-		Security: config.SecurityConfig{
-			AllowFileOperations: true,
-			AllowedPaths:        []string{workspaceDir},
-		},
-		Workspace: config.WorkspaceConfig{
-			DefaultPath: workspaceDir,
-		},
 	}
 
 	// Setup mock AI client
