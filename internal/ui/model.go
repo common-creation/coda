@@ -73,6 +73,7 @@ type Model struct {
 	viewport        viewport.Model
 	loadingStart    time.Time
 	estimatedTokens int       // Estimated tokens for the current request
+	userInputTokens int       // Estimated tokens for just the user input
 	lastTokenUsage  *ai.Usage // Last response token usage
 
 	// Streaming state
@@ -90,9 +91,9 @@ type Model struct {
 	currentMatch  int
 
 	// Tool call permit dialog state
-	pendingToolCalls      []ai.ToolCall // Tool calls waiting for user approval
-	selectedPermitOption  int           // Currently selected option (0=reject, 1=approve)
-	permitDialogVisible   bool          // Whether permit dialog is currently visible
+	pendingToolCalls     []ai.ToolCall // Tool calls waiting for user approval
+	selectedPermitOption int           // Currently selected option (0=reject, 1=approve)
+	permitDialogVisible  bool          // Whether permit dialog is currently visible
 
 	// Cursor position management
 	cursorPosition int // カーソル位置（rune単位）
@@ -123,6 +124,14 @@ type Model struct {
 	// Ctrl+C double press handling
 	lastCtrlCTime time.Time
 	ctrlCMessage  string
+
+	// Esc double press handling
+	lastEscTime time.Time
+	escMessage  string
+
+	// Ctrl+N double press handling
+	lastCtrlNTime time.Time
+	ctrlNMessage  string
 }
 
 // ModelOptions contains options for creating a new Model
@@ -169,6 +178,7 @@ func NewModel(opts ModelOptions) Model {
 		spinner:         s,
 		loadingStart:    time.Time{},
 		estimatedTokens: 0,
+		userInputTokens: 0,
 		lastTokenUsage:  nil,
 
 		// Initialize streaming state
@@ -187,7 +197,7 @@ func NewModel(opts ModelOptions) Model {
 
 		// Initialize tool call permit dialog state
 		pendingToolCalls:     make([]ai.ToolCall, 0),
-		selectedPermitOption: 0,    // Default to reject (0)
+		selectedPermitOption: 0, // Default to reject (0)
 		permitDialogVisible:  false,
 
 		// Initialize cursor position
@@ -219,6 +229,14 @@ func NewModel(opts ModelOptions) Model {
 		// Initialize Ctrl+C double press handling
 		lastCtrlCTime: time.Time{},
 		ctrlCMessage:  "",
+
+		// Initialize Esc double press handling
+		lastEscTime: time.Time{},
+		escMessage:  "",
+
+		// Initialize Ctrl+N double press handling
+		lastCtrlNTime: time.Time{},
+		ctrlNMessage:  "",
 	}
 }
 
@@ -245,7 +263,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// Check if we're handling input-related keys
 	if keyMsg, ok := msg.(tea.KeyMsg); ok {
 		key := keyMsg.String()
-		
+
 		// Toggle scroll mode with Ctrl+Y
 		if key == "ctrl+y" {
 			if m.currentMode == ModeScroll {
@@ -258,13 +276,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		}
-		
+
 		// In scroll mode, allow viewport to handle arrow keys
 		if m.currentMode == ModeScroll {
 			shouldUpdateViewport = true
 		}
 	}
-	
+
 	// Always allow mouse events to update viewport
 	if _, ok := msg.(tea.MouseMsg); ok {
 		shouldUpdateViewport = true
@@ -353,6 +371,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.lastTokenUsage = msg.TokenUsage
 		// Reset streaming state
 		m.streamingContent.Reset()
+		// Reset user input tokens
+		m.userInputTokens = 0
 		// Update viewport content with new message
 		m.updateViewportContent()
 
@@ -422,6 +442,24 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.ctrlCMessage != "" && time.Since(m.lastCtrlCTime) >= time.Second {
 			m.ctrlCMessage = ""
 		}
+
+	case clearEscMsg:
+		// Clear the Esc message if it hasn't been cleared already
+		if m.escMessage != "" && time.Since(m.lastEscTime) >= time.Second {
+			m.escMessage = ""
+		}
+
+	case clearCtrlNMsg:
+		// Clear the Ctrl+N message if it hasn't been cleared already
+		if m.ctrlNMessage != "" && time.Since(m.lastCtrlNTime) >= time.Second {
+			m.ctrlNMessage = ""
+		}
+
+	case toolExecutionMsg:
+		// Tool execution completed, send results to LLM
+		m.logger.Debug("Tool execution completed", "count", len(msg.results))
+		// Convert tool results to messages and send back to LLM
+		return m, m.sendToolResults(msg.results)
 
 	case loadingMsg:
 		m.loading = msg.loading
@@ -672,6 +710,59 @@ func (m Model) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.cursorPosition = len(runes)
 		m.updateCursorColumn()
 		return m, nil
+	case "esc":
+		// Check if this is a double press within 1 second
+		now := time.Now()
+		if !m.lastEscTime.IsZero() && now.Sub(m.lastEscTime) < time.Second {
+			// Second press within 1 second, clear input
+			m.currentInput = ""
+			m.cursorPosition = 0
+			m.cursorColumn = 0
+			m.escMessage = ""
+			m.lastEscTime = time.Time{}
+			return m, nil
+		}
+		// First press or too much time passed
+		m.lastEscTime = now
+		m.escMessage = "Press Esc again to clear textarea"
+		// Clear message after 1 second
+		return m, tea.Tick(time.Second, func(t time.Time) tea.Msg {
+			return clearEscMsg{}
+		})
+	case "ctrl+n":
+		// Check if this is a double press within 1 second
+		now := time.Now()
+		if !m.lastCtrlNTime.IsZero() && now.Sub(m.lastCtrlNTime) < time.Second {
+			// Second press within 1 second, create new session
+			m.messages = make([]Message, 0)
+			m.currentInput = ""
+			m.cursorPosition = 0
+			m.cursorColumn = 0
+			m.error = nil
+			m.loading = false
+			m.streamingContent.Reset()
+			m.lastTokenUsage = nil
+			m.estimatedTokens = 0
+			m.userInputTokens = 0
+			m.ctrlNMessage = ""
+			m.lastCtrlNTime = time.Time{}
+			// Create a new session in chat handler
+			if m.chatHandler != nil {
+				if err := m.chatHandler.CreateNewSession(); err != nil {
+					m.logger.Error("Failed to create new session", "error", err)
+				}
+			}
+			// Update viewport to show welcome message
+			m.updateViewportContent()
+			return m, nil
+		}
+		// First press or too much time passed
+		m.lastCtrlNTime = now
+		m.ctrlNMessage = "Press Ctrl+N again for new session"
+		// Clear message after 1 second
+		return m, tea.Tick(time.Second, func(t time.Time) tea.Msg {
+			return clearCtrlNMsg{}
+		})
 	}
 
 	// Handle regular text input (including IME)
@@ -964,13 +1055,13 @@ func (m Model) handleSearchModeKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 // handleScrollModeKeys handles keys in scroll mode
 func (m Model) handleScrollModeKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	key := msg.String()
-	
+
 	// Exit scroll mode with Esc or Ctrl+Y
 	if key == "esc" || key == "ctrl+y" {
 		m.currentMode = m.previousMode
 		return m, nil
 	}
-	
+
 	// In scroll mode, let viewport handle arrow keys
 	// The actual scrolling is handled by viewport update in Update()
 	switch key {
@@ -987,7 +1078,7 @@ func (m Model) handleScrollModeKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "end":
 		m.viewport.GotoBottom()
 	}
-	
+
 	return m, nil
 }
 
@@ -1037,16 +1128,9 @@ func (m *Model) exitPermitMode(approved bool) (tea.Model, tea.Cmd) {
 	m.currentMode = m.previousMode
 
 	if approved {
-		// TODO: Execute tool calls (implement in task-007)
 		m.logger.Debug("Tool calls approved", "count", len(toolCalls))
-		// For now, just add a message indicating approval
-		m.messages = append(m.messages, Message{
-			ID:        generateMessageID(),
-			Content:   fmt.Sprintf("Tool calls approved (%d tools)", len(toolCalls)),
-			Role:      "system",
-			Timestamp: time.Now(),
-			Tokens:    0,
-		})
+		// Execute tool calls and send results back to LLM
+		return m, m.executeToolCalls(toolCalls)
 	} else {
 		// Tool calls rejected
 		m.logger.Debug("Tool calls rejected", "count", len(toolCalls))
@@ -1057,10 +1141,9 @@ func (m *Model) exitPermitMode(approved bool) (tea.Model, tea.Cmd) {
 			Timestamp: time.Now(),
 			Tokens:    0,
 		})
+		// Update viewport with rejection message
+		m.updateViewportContent()
 	}
-
-	// Update viewport with new message
-	m.updateViewportContent()
 
 	return m, nil
 }
@@ -1082,6 +1165,9 @@ func (m *Model) sendMessage() (tea.Model, tea.Cmd) {
 			m.logger.Debug("Failed to estimate user message tokens", "error", err)
 		}
 	}
+
+	// Save user input tokens for display
+	m.userInputTokens = estimatedTokens
 
 	// Estimate total prompt tokens (for display during thinking)
 	if m.chatHandler != nil {
@@ -1216,9 +1302,9 @@ func (m Model) renderLoadingMessage() string {
 		formatDuration(elapsed))
 
 	// Add token information if available
-	if m.estimatedTokens > 0 {
+	if m.userInputTokens > 0 {
 		/// DO NOT CHANGE '≈' TO '~'
-		loadingMsg += fmt.Sprintf(" | Send: ≈%d tokens", m.estimatedTokens)
+		loadingMsg += fmt.Sprintf(" | Send: ≈%d tokens", m.userInputTokens)
 	}
 
 	// Add streaming token count if receiving
@@ -1386,16 +1472,24 @@ func (m Model) renderStatus() string {
 // renderHelpLine renders the help line
 func (m Model) renderHelpLine() string {
 	if m.currentMode == ModeScroll {
-		return " SCROLL MODE - Arrows:scroll, Home/End:top/bottom, Esc/Ctrl+Y:exit"
+		return " Arrows:scroll, Home/End:top/bottom, Esc/Ctrl+Y:return to input"
 	}
 	if m.currentMode == ModePermit {
-		return " PERMIT MODE - Left/Right:select, Enter:confirm, Esc:reject"
+		return " Left/Right:select, Enter:confirm, Esc:reject"
 	}
 	if m.ctrlCMessage != "" {
 		// Show warning when Ctrl+C was pressed once
-		return " Enter:send, Ctrl+J:newline, Ctrl+Y:scroll mode, F1:help, Press Ctrl+C again to quit"
+		return " Enter:send, Ctrl+J:newline, Ctrl+N:new session, Esc:clear textarea, Ctrl+Y:scroll, F1:help, Press Ctrl+C again to quit"
 	}
-	return " Enter:send, Ctrl+J:newline, Ctrl+Y:scroll mode, F1:help, Ctrl+C:quit"
+	if m.escMessage != "" {
+		// Show warning when Esc was pressed once
+		return " Enter:send, Ctrl+J:newline, Ctrl+N:new session, Press Esc again to clear textarea, Ctrl+Y:scroll, F1:help, Ctrl+C:quit"
+	}
+	if m.ctrlNMessage != "" {
+		// Show warning when Ctrl+N was pressed once
+		return " Enter:send, Ctrl+J:newline, Press Ctrl+N again for new session, Esc:clear textarea, Ctrl+Y:scroll, F1:help, Ctrl+C:quit"
+	}
+	return " Enter:send, Ctrl+J:newline, Ctrl+N:new session, Esc:clear textarea, Ctrl+Y:scroll, F1:help, Ctrl+C:quit"
 }
 
 // renderTokenUsage renders the token usage indicator
@@ -1595,35 +1689,35 @@ func (m Model) renderPermitDialog() string {
 	}
 
 	var dialogContent strings.Builder
-	
+
 	// Dialog title
 	dialogContent.WriteString("🔧 Tool Call Permission Required\n\n")
-	
+
 	// Show tool details
 	for i, toolCall := range m.pendingToolCalls {
 		if i > 0 {
 			dialogContent.WriteString("\n")
 		}
 		dialogContent.WriteString(fmt.Sprintf("Tool %d: %s\n", i+1, toolCall.Function.Name))
-		
+
 		// Format and show arguments
 		formattedArgs := m.formatToolArguments(toolCall.Function.Arguments)
 		dialogContent.WriteString(fmt.Sprintf("Arguments:\n%s\n", formattedArgs))
 	}
-	
+
 	dialogContent.WriteString("\n")
-	
+
 	// Render selection buttons
 	rejectStyle := lipgloss.NewStyle().
 		Padding(0, 2).
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color("241"))
-	
+
 	approveStyle := lipgloss.NewStyle().
 		Padding(0, 2).
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color("241"))
-	
+
 	// Highlight selected option
 	if m.selectedPermitOption == 0 {
 		// Reject is selected
@@ -1638,28 +1732,25 @@ func (m Model) renderPermitDialog() string {
 			Foreground(lipgloss.Color("10")).
 			Bold(true)
 	}
-	
-	rejectButton := rejectStyle.Render("拒否")
-	approveButton := approveStyle.Render("許可")
-	
+
+	rejectButton := rejectStyle.Render("Deny")
+	approveButton := approveStyle.Render("Allow")
+
 	// Combine buttons horizontally
 	buttons := lipgloss.JoinHorizontal(lipgloss.Center, rejectButton, "  ", approveButton)
 	dialogContent.WriteString(buttons)
-	
-	dialogContent.WriteString("\n\n")
-	dialogContent.WriteString("矢印キー: 選択, Enter: 決定, Esc: 拒否")
-	
+
 	// Apply dialog styling
 	dialogStyle := m.styles.UserInput.
 		BorderForeground(lipgloss.Color("#b40028")). // Corporate color for attention
 		Padding(1, 2)
-	
+
 	// Calculate content width
 	contentWidth := m.width - 4
 	if contentWidth < 40 {
 		contentWidth = 40
 	}
-	
+
 	return dialogStyle.Width(contentWidth).Render(dialogContent.String())
 }
 
@@ -1704,7 +1795,7 @@ func (m Model) formatToolArguments(args string) string {
 				valueStr = fmt.Sprintf("%v", v)
 			}
 		}
-		
+
 		formatted.WriteString(fmt.Sprintf("  %s: %s\n", key, valueStr))
 	}
 
@@ -1713,7 +1804,7 @@ func (m Model) formatToolArguments(args string) string {
 		// Remove the last newline
 		result = result[:len(result)-1]
 	}
-	
+
 	return result
 }
 
@@ -1795,6 +1886,17 @@ type loadingMsg struct {
 // clearCtrlCMsg is sent to clear the Ctrl+C warning message
 type clearCtrlCMsg struct{}
 
+// clearEscMsg is sent to clear the Esc warning message
+type clearEscMsg struct{}
+
+// clearCtrlNMsg is sent to clear the Ctrl+N warning message
+type clearCtrlNMsg struct{}
+
+// toolExecutionMsg is sent when tool execution is complete
+type toolExecutionMsg struct {
+	results []chat.ToolResult
+}
+
 // executeCommand executes a command mode command
 func (m *Model) executeCommand(command string) tea.Cmd {
 	m.logger.Debug("Executing command", "command", command)
@@ -1814,6 +1916,127 @@ func (m *Model) executeCommand(command string) tea.Cmd {
 	}
 
 	return nil
+}
+
+// executeToolCalls executes the approved tool calls and returns a command to send results back to LLM
+func (m *Model) executeToolCalls(toolCalls []ai.ToolCall) tea.Cmd {
+	return tea.Cmd(func() tea.Msg {
+		results := make([]chat.ToolResult, 0, len(toolCalls))
+
+		for _, toolCall := range toolCalls {
+			startTime := time.Now()
+
+			// Parse tool call arguments
+			var params map[string]interface{}
+			if err := json.Unmarshal([]byte(toolCall.Function.Arguments), &params); err != nil {
+				// Failed to parse arguments
+				results = append(results, chat.ToolResult{
+					ToolCallID: toolCall.ID,
+					ToolName:   toolCall.Function.Name,
+					Error:      fmt.Errorf("failed to parse tool arguments: %w", err),
+					ExecutedAt: time.Now(),
+					Duration:   time.Since(startTime),
+				})
+				continue
+			}
+
+			// Execute the tool
+			result, err := m.toolManager.Execute(m.ctx, toolCall.Function.Name, params)
+			results = append(results, chat.ToolResult{
+				ToolCallID: toolCall.ID,
+				ToolName:   toolCall.Function.Name,
+				Result:     result,
+				Error:      err,
+				ExecutedAt: time.Now(),
+				Duration:   time.Since(startTime),
+			})
+		}
+
+		return toolExecutionMsg{results: results}
+	})
+}
+
+// sendToolResults sends tool execution results back to the LLM
+func (m *Model) sendToolResults(results []chat.ToolResult) tea.Cmd {
+	// Add tool results as messages to the session
+	for _, result := range results {
+		content := ""
+		if result.Error != nil {
+			content = fmt.Sprintf("Tool execution failed: %v", result.Error)
+		} else if result.Result == nil {
+			// Handle nil result explicitly
+			content = "Tool executed successfully"
+		} else {
+			// Convert result to string
+			switch v := result.Result.(type) {
+			case string:
+				content = v
+			case []byte:
+				content = string(v)
+			default:
+				if data, err := json.Marshal(v); err == nil {
+					content = string(data)
+				} else {
+					content = fmt.Sprintf("%v", v)
+				}
+			}
+		}
+
+		// Ensure content is never empty
+		if content == "" {
+			content = "Tool executed successfully with empty result"
+		}
+
+		// Add tool result as user message with special formatting (text-based approach)
+		toolResultText := fmt.Sprintf("TOOL_RESULT[%s]: %s", result.ToolName, content)
+		message := ai.Message{
+			Role:    ai.RoleUser,
+			Content: toolResultText,
+		}
+
+		// Add message to current session
+		if err := m.chatHandler.AddMessageToSession(message); err != nil {
+			m.logger.Error("Failed to add tool result message", "error", err)
+		}
+
+		// Add to UI messages for display with brief summary
+		briefSummary := m.getToolResultSummary(result)
+		m.messages = append(m.messages, Message{
+			ID:        generateMessageID(),
+			Content:   briefSummary,
+			Role:      "tool",
+			Timestamp: result.ExecutedAt,
+			Tokens:    0,
+		})
+	}
+
+	// Update viewport with new messages
+	m.updateViewportContent()
+
+	// Set loading state for LLM response
+	m.loading = true
+	m.loadingStart = time.Now()
+	m.streamingContent.Reset()
+
+	// Send continuation request to LLM without adding new user message
+	return tea.Cmd(func() tea.Msg {
+		// Use ContinueConversation to continue with tool results
+		response, err := m.chatHandler.ContinueConversation(m.ctx, nil)
+		if err != nil {
+			return errorMsg{
+				error:      err,
+				userAction: "send tool results",
+			}
+		}
+
+		return chatResponseMsg{
+			ID:         generateMessageID(),
+			Content:    response.Content,
+			Tokens:     response.TokenCount,
+			TokenUsage: response.TokenUsage,
+			ToolCalls:  response.ToolCalls,
+		}
+	})
 }
 
 // performSearch performs a search in the chat history
@@ -1880,6 +2103,46 @@ func (m Model) GetCurrentInput() string {
 // IsLoading returns whether the UI is in loading state (for testing)
 func (m Model) IsLoading() bool {
 	return m.loading
+}
+
+// getToolResultSummary returns a brief summary of tool execution result
+func (m *Model) getToolResultSummary(result chat.ToolResult) string {
+	toolName := result.ToolName
+
+	// Handle error case
+	if result.Error != nil {
+		return fmt.Sprintf("[%s] ❌ Failed: %v", toolName, result.Error)
+	}
+
+	// Generate brief summary based on tool type
+	switch toolName {
+	case "read_file":
+		// Extract filename from parameters if available
+		if result.ToolCallID != "" {
+			return fmt.Sprintf("[%s] ✅ File read successfully", toolName)
+		}
+		return fmt.Sprintf("[%s] ✅ Completed", toolName)
+
+	case "write_file", "edit_file":
+		return fmt.Sprintf("[%s] ✅ File modified successfully", toolName)
+
+	case "list_files":
+		// Try to count files if result is a slice
+		if files, ok := result.Result.([]interface{}); ok {
+			return fmt.Sprintf("[%s] ✅ Found %d items", toolName, len(files))
+		}
+		return fmt.Sprintf("[%s] ✅ Directory listed", toolName)
+
+	case "search_files":
+		// Try to count search results
+		if results, ok := result.Result.(map[string]interface{}); ok {
+			return fmt.Sprintf("[%s] ✅ Found matches in %d files", toolName, len(results))
+		}
+		return fmt.Sprintf("[%s] ✅ Search completed", toolName)
+
+	default:
+		return fmt.Sprintf("[%s] ✅ Completed", toolName)
+	}
 }
 
 // GetError returns the current error state (for testing)
@@ -2094,6 +2357,7 @@ func (m Model) calculateSessionTokens() int {
 			// Use tokenizer for accurate system prompt token count
 			systemTokens, err := EstimateUserMessageTokens(systemPrompt, m.config.AI.Model)
 			if err != nil {
+				panic(err)
 				// Fallback to rough estimate on error
 				systemTokens = 800
 			}

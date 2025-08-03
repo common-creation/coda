@@ -5,25 +5,27 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/common-creation/coda/internal/ai"
 	"github.com/common-creation/coda/internal/config"
+	"github.com/common-creation/coda/internal/tokenizer"
 	"github.com/common-creation/coda/internal/tools"
 )
 
 // ChatHandler manages the chat interaction flow
 type ChatHandler struct {
-	aiClient     ai.Client
-	toolManager  *tools.Manager
-	session      *SessionManager
-	config       *config.Config
-	history      *History
-	systemPrompt string
-	persistence  *FilePersistence
-	
+	aiClient      ai.Client
+	toolManager   *tools.Manager
+	session       *SessionManager
+	config        *config.Config
+	history       *History
+	promptBuilder *PromptBuilder
+	persistence   *FilePersistence
+
 	// Streaming state
 	streamingTokens int
 	streamingMutex  sync.Mutex
@@ -31,25 +33,39 @@ type ChatHandler struct {
 
 // ChatResponse represents a response from the chat handler
 type ChatResponse struct {
-	Content          string
-	TokenCount       int           // Total token count (deprecated, use TokenUsage.TotalTokens)
-	ToolCalls        []ai.ToolCall
-	TokenUsage       *ai.Usage     // Detailed token usage from AI response
-	EstimatedPrompt  int           // Estimated prompt tokens (before sending)
+	Content         string
+	TokenCount      int // Total token count (deprecated, use TokenUsage.TotalTokens)
+	ToolCalls       []ai.ToolCall
+	TokenUsage      *ai.Usage // Detailed token usage from AI response
+	EstimatedPrompt int       // Estimated prompt tokens (before sending)
 }
 
 // NewChatHandler creates a new chat handler
 func NewChatHandler(aiClient ai.Client, toolManager *tools.Manager, session *SessionManager, cfg *config.Config, history *History) *ChatHandler {
+	// Create a better token counter with the model from config
+	betterCounter := NewBetterTokenCounter(cfg.AI.Model)
+
+	// Update session manager to use the better token counter
+	session.SetTokenCounter(betterCounter)
+
+	// Initialize prompt builder with better token counter
+	promptBuilder := NewPromptBuilder(4000, betterCounter)
+
+	// Add tool information to prompt builder
+	if toolManager != nil {
+		tools := toolManager.GetAll()
+		for _, tool := range tools {
+			promptBuilder.AddToolPrompt(tool.Name(), tool.Description())
+		}
+	}
+
 	handler := &ChatHandler{
-		aiClient:    aiClient,
-		toolManager: toolManager,
-		session:     session,
-		config:      cfg,
-		history:     history,
-		systemPrompt: "You are CODA (CODing Agent), an AI assistant designed to help developers with coding tasks. " +
-			"You have access to various tools for file operations and can execute them to assist with programming tasks. " +
-			"Always be helpful, accurate, and provide clear explanations for your actions. " +
-			"When users mention paths starting with @ in their messages, you can read, write, or search these files by using the appropriate tools with those paths.",
+		aiClient:      aiClient,
+		toolManager:   toolManager,
+		session:       session,
+		config:        cfg,
+		history:       history,
+		promptBuilder: promptBuilder,
 	}
 
 	// Initialize persistence for auto-save
@@ -63,7 +79,6 @@ func NewChatHandler(aiClient ai.Client, toolManager *tools.Manager, session *Ses
 
 	return handler
 }
-
 
 // HandleMessageWithResponse processes a user message and returns the response for TUI mode
 func (h *ChatHandler) HandleMessageWithResponse(ctx context.Context, input string, tokenCallback func(int)) (*ChatResponse, error) {
@@ -103,13 +118,12 @@ func (h *ChatHandler) HandleMessageWithResponse(ctx context.Context, input strin
 	// Build messages for AI request
 	messages := h.buildMessages(currentSession)
 
-	// Create chat request with streaming enabled
+	// Create chat request with streaming enabled (no tools - using text-based tool calling)
 	req := ai.ChatRequest{
 		Model:       h.config.AI.Model,
 		Messages:    messages,
 		Temperature: &h.config.AI.Temperature,
 		MaxTokens:   &h.config.AI.MaxTokens,
-		Tools:       h.getToolDefinitions(),
 		Stream:      true, // Enable streaming
 	}
 
@@ -120,23 +134,24 @@ func (h *ChatHandler) HandleMessageWithResponse(ctx context.Context, input strin
 	}
 	defer stream.Close()
 
-	// Process streaming response
+	// Process streaming response with text-based tool call parsing
 	var fullContent strings.Builder
 	var toolCalls []ai.ToolCall
 	var totalUsage ai.Usage
-	
+	textParser := NewTextToolCallParser()
+
 	// Reset streaming tokens at start
 	h.streamingMutex.Lock()
 	h.streamingTokens = 0
 	h.streamingMutex.Unlock()
-	
+
 	// Debug logging
 	debugFile, _ := os.OpenFile("/tmp/coda-debug.log", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
 	if debugFile != nil {
-		fmt.Fprintf(debugFile, "[ChatHandler] Starting streaming response processing\n")
+		fmt.Fprintf(debugFile, "[ChatHandler] Starting streaming response processing with text parser\n")
 		debugFile.Close()
 	}
-	
+
 	chunkCount := 0
 	for {
 		chunk, err := stream.Read()
@@ -162,37 +177,43 @@ func (h *ChatHandler) HandleMessageWithResponse(ctx context.Context, input strin
 			// Handle content
 			if delta.Content != "" {
 				fullContent.WriteString(delta.Content)
-				
+
+				// Try to parse message with potential tool calls
+				contentStr := fullContent.String()
+				_, parsedToolCalls, err := textParser.ParseMessage(contentStr)
+				if err == nil && len(parsedToolCalls) > 0 {
+					// Replace any existing tool calls with newly parsed ones
+					toolCalls = parsedToolCalls
+				}
+
 				// Calculate tokens for current content using tokenizer
 				estimatedTokens := 0
-				contentStr := fullContent.String()
-				
+
 				// Use tokenizer for accurate token counting
 				if len(contentStr) > 0 {
-					// Get model from config
-					model := h.config.AI.Model
-					if model == "" {
-						model = "gpt-4" // Fallback to default
+					// Calculate tokens using the tokenizer package
+					tokens, err := tokenizer.EstimateUserMessageTokens(contentStr, h.config.AI.Model)
+					if err != nil {
+						// Fallback to simple estimation
+						runeCount := len([]rune(contentStr))
+						estimatedTokens = runeCount / 4
+					} else {
+						estimatedTokens = tokens
 					}
-					
-					// Calculate tokens using simple estimation
-					// TODO: Once tokenizer is in a separate package, use accurate counting
-					runeCount := len([]rune(contentStr))
-					estimatedTokens = runeCount / 3 // Rough estimation for mixed content
-					
+
 					// Debug logging
 					debugFile, _ := os.OpenFile("/tmp/coda-debug.log", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
 					if debugFile != nil {
-						fmt.Fprintf(debugFile, "[ChatHandler] Token estimation: runeCount=%d, estimatedTokens=%d\n", runeCount, estimatedTokens)
+						fmt.Fprintf(debugFile, "[ChatHandler] Token estimation: contentLen=%d, estimatedTokens=%d, toolCalls=%d\n", len(contentStr), estimatedTokens, len(toolCalls))
 						debugFile.Close()
 					}
 				}
-				
+
 				// Update ChatHandler's streaming tokens
 				h.streamingMutex.Lock()
 				h.streamingTokens = estimatedTokens
 				h.streamingMutex.Unlock()
-				
+
 				// Debug logging
 				debugFile, _ := os.OpenFile("/tmp/coda-debug.log", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
 				if debugFile != nil {
@@ -200,48 +221,16 @@ func (h *ChatHandler) HandleMessageWithResponse(ctx context.Context, input strin
 						chunkCount, delta.Content, fullContent.Len(), estimatedTokens)
 					debugFile.Close()
 				}
-				
+
 				// Call the callback if provided
 				if tokenCallback != nil {
 					tokenCallback(estimatedTokens)
 				}
 			}
 
-			// Handle tool calls
-			if delta.ToolCalls != nil {
-				for _, tc := range delta.ToolCalls {
-					// Check if this is a continuation of an existing tool call
-					if tc.Index >= 0 && tc.Index < len(toolCalls) {
-						// Update existing tool call
-						if tc.Function.Arguments != "" {
-							toolCalls[tc.Index].Function.Arguments += tc.Function.Arguments
-						}
-						if tc.Function.Name != "" {
-							toolCalls[tc.Index].Function.Name = tc.Function.Name
-						}
-					} else {
-						// New tool call - extend slice if needed
-						for len(toolCalls) <= tc.Index {
-							toolCalls = append(toolCalls, ai.ToolCall{})
-						}
-						if tc.Index >= 0 {
-							// Update by index
-							if tc.Function.Name != "" {
-								toolCalls[tc.Index].Function.Name = tc.Function.Name
-							}
-							if tc.Function.Arguments != "" {
-								toolCalls[tc.Index].Function.Arguments += tc.Function.Arguments
-							}
-							toolCalls[tc.Index].Index = tc.Index
-						} else {
-							// No index, append as new
-							toolCalls = append(toolCalls, tc)
-						}
-					}
-				}
-			}
+			// Note: delta.ToolCalls will be empty since we're not using structured tool calling
 		}
-		
+
 		// Note: Usage information is typically not available in streaming chunks
 		// It will be estimated after streaming completes
 	}
@@ -251,10 +240,16 @@ func (h *ChatHandler) HandleMessageWithResponse(ctx context.Context, input strin
 	h.streamingTokens = 0
 	h.streamingMutex.Unlock()
 
+	// Parse final message to extract clean content and tool calls
+	cleanContent, finalToolCalls, _ := textParser.ParseMessage(fullContent.String())
+	if len(finalToolCalls) > 0 {
+		toolCalls = finalToolCalls
+	}
+
 	// Create final message
 	message := ai.Message{
 		Role:      ai.RoleAssistant,
-		Content:   fullContent.String(),
+		Content:   cleanContent,
 		ToolCalls: toolCalls,
 	}
 
@@ -276,14 +271,20 @@ func (h *ChatHandler) HandleMessageWithResponse(ctx context.Context, input strin
 	// Process tool calls if any (TUI should handle this asynchronously)
 	if len(toolCalls) > 0 {
 		// For now, just include a note about tool calls
-		toolCallInfo := fmt.Sprintf("\n\n[Tool calls requested: %d]", len(toolCalls))
+		toolCallInfo := fmt.Sprintf("[Tool calls requested: %d]", len(toolCalls))
 		message.Content += toolCallInfo
 	}
 
 	// If usage wasn't provided in stream, estimate it
 	if totalUsage.TotalTokens == 0 {
-		// Rough estimation
-		totalUsage.CompletionTokens = fullContent.Len() / 4
+		// Use tokenizer for accurate token counting
+		tokens, err := tokenizer.EstimateUserMessageTokens(fullContent.String(), h.config.AI.Model)
+		if err != nil {
+			// Fallback to simple estimation
+			totalUsage.CompletionTokens = fullContent.Len() / 4
+		} else {
+			totalUsage.CompletionTokens = tokens
+		}
 		totalUsage.TotalTokens = totalUsage.CompletionTokens
 	}
 
@@ -296,46 +297,68 @@ func (h *ChatHandler) HandleMessageWithResponse(ctx context.Context, input strin
 	}, nil
 }
 
-
 // buildMessages constructs the message list for the AI request
 func (h *ChatHandler) buildMessages(session *Session) []ai.Message {
 	messages := make([]ai.Message, 0, len(session.Messages)+1)
 
+	// Build system prompt using PromptBuilder
+	systemPrompt, err := h.promptBuilder.Build()
+	if err != nil {
+		// Fallback to basic prompt if building fails
+		systemPrompt = "You are CODA (CODing Agent), an AI assistant designed to help developers with coding tasks."
+	}
+
+	// Load workspace-specific prompt from CLAUDE.md if exists
+	workspacePrompt := h.loadWorkspacePrompt()
+	if workspacePrompt != "" {
+		systemPrompt += "\n\n## Workspace-Specific Instructions\n" + workspacePrompt
+	}
+
+	// Debug: Log system prompt to file
+	debugFile, _ := os.OpenFile("/tmp/coda-system-prompt.log", os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0644)
+	if debugFile != nil {
+		fmt.Fprintf(debugFile, "=== SYSTEM PROMPT ===\n%s\n", systemPrompt)
+		debugFile.Close()
+	}
+
 	// Add system prompt
 	messages = append(messages, ai.Message{
 		Role:    ai.RoleSystem,
-		Content: h.systemPrompt,
+		Content: systemPrompt,
 	})
 
-	// Add conversation history
-	messages = append(messages, session.Messages...)
+	// Add conversation history with null content check
+	for _, msg := range session.Messages {
+		// Ensure content is never null
+		if msg.Content == "" {
+			msg.Content = "[Empty message]"
+		}
+		messages = append(messages, msg)
+	}
 
 	return messages
 }
 
-// getToolDefinitions returns the tool definitions for the AI
-func (h *ChatHandler) getToolDefinitions() []ai.Tool {
-	tools := h.toolManager.GetAll()
-	definitions := make([]ai.Tool, 0, len(tools))
-
-	for _, tool := range tools {
-		definitions = append(definitions, ai.Tool{
-			Type: "function",
-			Function: ai.FunctionTool{
-				Name:        tool.Name(),
-				Description: tool.Description(),
-				Parameters: map[string]interface{}{
-					"type":       tool.Schema().Type,
-					"properties": tool.Schema().Properties,
-					"required":   tool.Schema().Required,
-				},
-			},
-		})
+// loadWorkspacePrompt loads CLAUDE.md from the current workspace root
+func (h *ChatHandler) loadWorkspacePrompt() string {
+	// Try to find and read CLAUDE.md from the current directory
+	claudePath := "CLAUDE.md"
+	if content, err := os.ReadFile(claudePath); err == nil {
+		return string(content)
 	}
 
-	return definitions
+	// Try to find CLAUDE.md from the working directory
+	if wd, err := os.Getwd(); err == nil {
+		claudePath = filepath.Join(wd, "CLAUDE.md")
+		if content, err := os.ReadFile(claudePath); err == nil {
+			return string(content)
+		}
+	}
+
+	return ""
 }
 
+// NOTE: getToolDefinitions method removed - tool definitions are now included in system prompt
 
 // processToolCalls handles tool execution requests
 func (h *ChatHandler) processToolCalls(ctx context.Context, sessionID string, toolCalls []ai.ToolCall) error {
@@ -349,19 +372,23 @@ func (h *ChatHandler) processToolCalls(ctx context.Context, sessionID string, to
 
 // SetSystemPrompt allows updating the system prompt
 func (h *ChatHandler) SetSystemPrompt(prompt string) {
-	h.systemPrompt = prompt
+	h.promptBuilder.AddCustomPrompt("user_system_prompt", prompt)
 }
 
 // GetSystemPrompt returns the current system prompt
 func (h *ChatHandler) GetSystemPrompt() string {
-	return h.systemPrompt
+	prompt, err := h.promptBuilder.Build()
+	if err != nil {
+		return "Error building system prompt"
+	}
+	return prompt
 }
 
 // GetStreamingTokens returns the current number of tokens received during streaming
 func (h *ChatHandler) GetStreamingTokens() int {
 	h.streamingMutex.Lock()
 	defer h.streamingMutex.Unlock()
-	
+
 	// Debug logging
 	if h.streamingTokens > 0 {
 		debugFile, _ := os.OpenFile("/tmp/coda-debug.log", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
@@ -370,7 +397,7 @@ func (h *ChatHandler) GetStreamingTokens() int {
 			debugFile.Close()
 		}
 	}
-	
+
 	return h.streamingTokens
 }
 
@@ -378,29 +405,222 @@ func (h *ChatHandler) GetStreamingTokens() int {
 func (h *ChatHandler) EstimatePromptTokens(userInput string) (int, error) {
 	// Get current session
 	currentSession := h.session.GetCurrent()
-	
+
 	// Calculate total content length
 	totalContent := ""
-	
+
 	// Add system prompt
-	totalContent += h.systemPrompt + " "
-	
+	if systemPrompt, err := h.promptBuilder.Build(); err == nil {
+		totalContent += systemPrompt + " "
+	}
+
 	// Add session messages if available
 	if currentSession != nil {
 		for _, msg := range currentSession.Messages {
 			totalContent += msg.Content + " "
 		}
 	}
-	
+
 	// Add the potential user message
 	totalContent += userInput
-	
-	// Simple token estimation
-	// TODO: Once tokenizer is in a separate package, use accurate counting
-	runeCount := len([]rune(totalContent))
-	estimatedTokens := runeCount / 3 // Rough estimation for mixed content
-	
-	return estimatedTokens, nil
+
+	// Use tokenizer for accurate token counting
+	tokens, err := tokenizer.EstimateUserMessageTokens(totalContent, h.config.AI.Model)
+	if err != nil {
+		// Fallback to simple estimation
+		runeCount := len([]rune(totalContent))
+		estimatedTokens := runeCount / 4
+		return estimatedTokens, nil
+	}
+
+	return tokens, nil
+}
+
+// AddMessageToSession adds a message to the current session
+func (h *ChatHandler) AddMessageToSession(message ai.Message) error {
+	currentSession := h.session.GetCurrent()
+	if currentSession == nil {
+		return fmt.Errorf("no active session")
+	}
+	return h.session.AddMessage(currentSession.ID, message)
+}
+
+// GetCurrentSession returns the current session
+func (h *ChatHandler) GetCurrentSession() *Session {
+	return h.session.GetCurrent()
+}
+
+// CreateNewSession creates a new chat session
+func (h *ChatHandler) CreateNewSession() error {
+	sessionID, err := h.session.CreateSession()
+	if err != nil {
+		return fmt.Errorf("failed to create new session: %w", err)
+	}
+
+	// Set the new session as current
+	if err := h.session.SetCurrent(sessionID); err != nil {
+		return fmt.Errorf("failed to set current session: %w", err)
+	}
+
+	return nil
+}
+
+// ContinueConversation continues the conversation without adding a new user message
+// This is used after tool execution results have been added to the session
+func (h *ChatHandler) ContinueConversation(ctx context.Context, tokenCallback func(int)) (*ChatResponse, error) {
+	// Get current session
+	currentSession := h.session.GetCurrent()
+	if currentSession == nil {
+		return nil, fmt.Errorf("no active session")
+	}
+
+	// Build messages for AI request (without adding new user message)
+	messages := h.buildMessages(currentSession)
+
+	// Create chat request with streaming enabled (no tools - using text-based tool calling)
+	req := ai.ChatRequest{
+		Model:       h.config.AI.Model,
+		Messages:    messages,
+		Temperature: &h.config.AI.Temperature,
+		MaxTokens:   &h.config.AI.MaxTokens,
+		Stream:      true, // Enable streaming
+	}
+
+	// Send request to AI with streaming
+	stream, err := h.aiClient.ChatCompletionStream(ctx, req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create chat stream: %w", err)
+	}
+	defer stream.Close()
+
+	// Process streaming response with text-based tool call parsing
+	var fullContent strings.Builder
+	var toolCalls []ai.ToolCall
+	var totalUsage ai.Usage
+	textParser := NewTextToolCallParser()
+
+	// Reset streaming tokens at start
+	h.streamingMutex.Lock()
+	h.streamingTokens = 0
+	h.streamingMutex.Unlock()
+
+	chunkCount := 0
+	for {
+		chunk, err := stream.Read()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, fmt.Errorf("error reading stream: %w", err)
+		}
+
+		chunkCount++
+
+		// Process chunk
+		if chunk.Choices != nil && len(chunk.Choices) > 0 {
+			delta := chunk.Choices[0].Delta
+
+			// Handle content
+			if delta.Content != "" {
+				fullContent.WriteString(delta.Content)
+
+				// Try to parse message with potential tool calls
+				contentStr := fullContent.String()
+				_, parsedToolCalls, err := textParser.ParseMessage(contentStr)
+				if err == nil && len(parsedToolCalls) > 0 {
+					// Replace any existing tool calls with newly parsed ones
+					toolCalls = parsedToolCalls
+				}
+
+				// Calculate tokens for current content using tokenizer
+				estimatedTokens := 0
+
+				// Use tokenizer for accurate token counting
+				if len(contentStr) > 0 {
+					// Calculate tokens using the tokenizer package
+					tokens, err := tokenizer.EstimateUserMessageTokens(contentStr, h.config.AI.Model)
+					if err != nil {
+						// Fallback to simple estimation
+						runeCount := len([]rune(contentStr))
+						estimatedTokens = runeCount / 4
+					} else {
+						estimatedTokens = tokens
+					}
+				}
+
+				// Update ChatHandler's streaming tokens
+				h.streamingMutex.Lock()
+				h.streamingTokens = estimatedTokens
+				h.streamingMutex.Unlock()
+
+				// Call the callback if provided
+				if tokenCallback != nil {
+					tokenCallback(estimatedTokens)
+				}
+			}
+
+			// Note: delta.ToolCalls will be empty since we're not using structured tool calling
+		}
+	}
+
+	// Reset streaming tokens after streaming completes
+	h.streamingMutex.Lock()
+	h.streamingTokens = 0
+	h.streamingMutex.Unlock()
+
+	// Parse final message to extract clean content and tool calls
+	cleanContent, finalToolCalls, _ := textParser.ParseMessage(fullContent.String())
+	if len(finalToolCalls) > 0 {
+		toolCalls = finalToolCalls
+	}
+
+	// Create final message
+	message := ai.Message{
+		Role:      ai.RoleAssistant,
+		Content:   cleanContent,
+		ToolCalls: toolCalls,
+	}
+
+	// Add assistant message to session
+	if err := h.session.AddMessage(currentSession.ID, message); err != nil {
+		return nil, fmt.Errorf("failed to add assistant message: %w", err)
+	}
+
+	// Auto-save session after each message
+	if h.persistence != nil {
+		if session := h.session.GetCurrent(); session != nil {
+			if err := h.persistence.SaveSession(session); err != nil {
+				// Log error but don't fail the operation
+			}
+		}
+	}
+
+	// Process tool calls if any
+	if len(toolCalls) > 0 {
+		// For now, just include a note about tool calls
+		toolCallInfo := fmt.Sprintf("[Tool calls requested: %d]", len(toolCalls))
+		message.Content += toolCallInfo
+	}
+
+	// If usage wasn't provided in stream, estimate it
+	if totalUsage.TotalTokens == 0 {
+		// Use tokenizer for accurate token counting
+		tokens, err := tokenizer.EstimateUserMessageTokens(fullContent.String(), h.config.AI.Model)
+		if err != nil {
+			// Fallback to simple estimation
+			totalUsage.CompletionTokens = fullContent.Len() / 4
+		} else {
+			totalUsage.CompletionTokens = tokens
+		}
+		totalUsage.TotalTokens = totalUsage.CompletionTokens
+	}
+
+	return &ChatResponse{
+		Content:    message.Content,
+		TokenCount: totalUsage.TotalTokens,
+		ToolCalls:  toolCalls,
+		TokenUsage: &totalUsage,
+	}, nil
 }
 
 // truncateString truncates a string to the specified length

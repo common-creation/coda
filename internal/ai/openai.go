@@ -194,20 +194,9 @@ func (c *OpenAIClient) convertChatRequest(req ChatRequest) (openai.ChatCompletio
 			ToolCallID: msg.ToolCallID,
 		}
 
-		// Convert tool calls
-		if len(msg.ToolCalls) > 0 {
-			openaiReq.Messages[i].ToolCalls = make([]openai.ToolCall, len(msg.ToolCalls))
-			for j, tc := range msg.ToolCalls {
-				openaiReq.Messages[i].ToolCalls[j] = openai.ToolCall{
-					ID:   tc.ID,
-					Type: openai.ToolType(tc.Type),
-					Function: openai.FunctionCall{
-						Name:      tc.Function.Name,
-						Arguments: tc.Function.Arguments,
-					},
-				}
-			}
-		}
+		// NOTE: Tool calls are handled via text-based approach, not OpenAI's native tool calling
+		// We intentionally do NOT send ToolCalls to the API to support multi-LLM compatibility
+		// Tool calls are embedded in the message content as JSON
 	}
 
 	// Convert optional parameters
@@ -237,20 +226,7 @@ func (c *OpenAIClient) convertChatRequest(req ChatRequest) (openai.ChatCompletio
 		openaiReq.Seed = req.Seed
 	}
 
-	// Convert tools
-	if len(req.Tools) > 0 {
-		openaiReq.Tools = make([]openai.Tool, len(req.Tools))
-		for i, tool := range req.Tools {
-			openaiReq.Tools[i] = openai.Tool{
-				Type: openai.ToolType(tool.Type),
-				Function: &openai.FunctionDefinition{
-					Name:        tool.Function.Name,
-					Description: tool.Function.Description,
-					Parameters:  tool.Function.Parameters,
-				},
-			}
-		}
-	}
+	// NOTE: Tools conversion removed - using text-based tool calling
 
 	// Convert response format
 	if req.ResponseFormat != nil {

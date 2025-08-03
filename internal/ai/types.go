@@ -105,11 +105,8 @@ type ChatRequest struct {
 	// Whether to stream the response
 	Stream bool `json:"stream,omitempty"`
 
-	// Available tools/functions
-	Tools []Tool `json:"tools,omitempty"`
-
-	// Tool choice strategy
-	ToolChoice interface{} `json:"tool_choice,omitempty"`
+	// NOTE: Tools and ToolChoice removed for text-based tool calling
+	// Tools are now described in the system prompt instead
 
 	// Response format specification
 	ResponseFormat *ResponseFormat `json:"response_format,omitempty"`

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/common-creation/coda/internal/ai"
+	"github.com/common-creation/coda/internal/tokenizer"
 	"github.com/google/uuid"
 )
 
@@ -36,12 +37,34 @@ type TokenCounter interface {
 }
 
 // SimpleTokenCounter provides a simple token counting implementation
-type SimpleTokenCounter struct{}
+type SimpleTokenCounter struct{
+	model string
+}
 
 // CountTokens estimates token count (roughly 4 chars per token)
 func (s *SimpleTokenCounter) CountTokens(text string) int {
 	// Simple estimation: ~4 characters per token on average
 	return len(text) / 4
+}
+
+// BetterTokenCounter provides accurate token counting using tokenizer
+type BetterTokenCounter struct {
+	model string
+}
+
+// NewBetterTokenCounter creates a new BetterTokenCounter with model name
+func NewBetterTokenCounter(model string) *BetterTokenCounter {
+	return &BetterTokenCounter{model: model}
+}
+
+// CountTokens estimates token count using the tokenizer package
+func (b *BetterTokenCounter) CountTokens(text string) int {
+	tokens, err := tokenizer.EstimateUserMessageTokens(text, b.model)
+	if err != nil {
+		// Fallback to simple estimation on error
+		return len(text) / 4
+	}
+	return tokens
 }
 
 // NewSessionManager creates a new session manager
@@ -50,7 +73,7 @@ func NewSessionManager(maxAge time.Duration, maxTokens int) *SessionManager {
 		sessions:  make(map[string]*Session),
 		maxAge:    maxAge,
 		maxTokens: maxTokens,
-		tokenizer: &SimpleTokenCounter{},
+		tokenizer: &SimpleTokenCounter{model: "gpt-4"},
 	}
 
 	// Start cleanup goroutine
@@ -109,6 +132,11 @@ func (sm *SessionManager) UpdateSession(id string, msg ai.Message) error {
 	session, exists := sm.sessions[id]
 	if !exists {
 		return fmt.Errorf("session not found: %s", id)
+	}
+
+	// Ensure content is never empty
+	if msg.Content == "" {
+		msg.Content = "[Empty message]"
 	}
 
 	// Count tokens in the new message

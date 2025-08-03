@@ -226,20 +226,9 @@ func (c *AzureClient) convertChatRequest(req ChatRequest) (openai.ChatCompletion
 			ToolCallID: msg.ToolCallID,
 		}
 
-		// Convert tool calls
-		if len(msg.ToolCalls) > 0 {
-			azureReq.Messages[i].ToolCalls = make([]openai.ToolCall, len(msg.ToolCalls))
-			for j, tc := range msg.ToolCalls {
-				azureReq.Messages[i].ToolCalls[j] = openai.ToolCall{
-					ID:   tc.ID,
-					Type: openai.ToolType(tc.Type),
-					Function: openai.FunctionCall{
-						Name:      tc.Function.Name,
-						Arguments: tc.Function.Arguments,
-					},
-				}
-			}
-		}
+		// NOTE: Tool calls are handled via text-based approach, not Azure OpenAI's native tool calling
+		// We intentionally do NOT send ToolCalls to the API to support multi-LLM compatibility
+		// Tool calls are embedded in the message content as JSON
 	}
 
 	// Convert optional parameters
@@ -273,20 +262,7 @@ func (c *AzureClient) convertChatRequest(req ChatRequest) (openai.ChatCompletion
 		azureReq.Seed = req.Seed
 	}
 
-	// Convert tools
-	if len(req.Tools) > 0 {
-		azureReq.Tools = make([]openai.Tool, len(req.Tools))
-		for i, tool := range req.Tools {
-			azureReq.Tools[i] = openai.Tool{
-				Type: openai.ToolType(tool.Type),
-				Function: &openai.FunctionDefinition{
-					Name:        tool.Function.Name,
-					Description: tool.Function.Description,
-					Parameters:  tool.Function.Parameters,
-				},
-			}
-		}
-	}
+	// NOTE: Tools conversion removed - using text-based tool calling
 
 	// Convert response format
 	if req.ResponseFormat != nil {
