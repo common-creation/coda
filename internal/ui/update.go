@@ -66,6 +66,9 @@ type (
 		Message string
 		Context string
 	}
+
+	// screenRefreshMsg triggers a screen refresh without affecting data
+	screenRefreshMsg struct{}
 )
 
 // AppState represents the overall application state

@@ -472,6 +472,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmds = append(cmds, m.spinner.Tick)
 		}
 		return m, tea.Batch(cmds...)
+
+	case screenRefreshMsg:
+		// Screen refresh - just return to trigger a View() redraw
+		return m, nil
 	}
 
 	// Update view components (when implemented)
@@ -1127,10 +1131,13 @@ func (m *Model) exitPermitMode(approved bool) (tea.Model, tea.Cmd) {
 	// Return to previous mode
 	m.currentMode = m.previousMode
 
+	// Create screen refresh command
+	refreshCmd := func() tea.Msg { return screenRefreshMsg{} }
+
 	if approved {
 		m.logger.Debug("Tool calls approved", "count", len(toolCalls))
 		// Execute tool calls and send results back to LLM
-		return m, m.executeToolCalls(toolCalls)
+		return m, tea.Batch(m.executeToolCalls(toolCalls), refreshCmd)
 	} else {
 		// Tool calls rejected
 		m.logger.Debug("Tool calls rejected", "count", len(toolCalls))
@@ -1143,9 +1150,8 @@ func (m *Model) exitPermitMode(approved bool) (tea.Model, tea.Cmd) {
 		})
 		// Update viewport with rejection message
 		m.updateViewportContent()
+		return m, refreshCmd
 	}
-
-	return m, nil
 }
 
 // sendMessage sends the current input as a chat message
