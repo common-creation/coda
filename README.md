@@ -1,4 +1,6 @@
-# CODA - AI-Powered Coding Assistant
+# CODA - CODing Assistant
+
+![](https://i.imgur.com/stKKmbT.png)
 
 <div align="center">
 
