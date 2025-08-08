@@ -29,7 +29,7 @@ var (
 	model           string
 	continueSession bool
 	autoApprove     bool
-	initialMessage  string  // Initial message to send when starting chat
+	initialMessage  string // Initial message to send when starting chat
 )
 
 // chatCmd represents the chat command
@@ -93,14 +93,14 @@ func runTUIChat(ctx context.Context, handler *chat.ChatHandler) error {
 	logger := &simpleLogger{}
 	wrappedValidator := &securityValidatorWrapper{validator: validator}
 	toolManager := tools.NewManager(wrappedValidator, logger)
-	
+
 	// Register tools
 	toolManager.Register(tools.NewReadFileTool(wrappedValidator))
 	toolManager.Register(tools.NewWriteFileTool(wrappedValidator))
 	toolManager.Register(tools.NewEditFileTool(wrappedValidator))
 	toolManager.Register(tools.NewListFilesTool(wrappedValidator))
 	toolManager.Register(tools.NewSearchFilesTool(wrappedValidator))
-	
+
 	// Create and run the Bubbletea UI app
 	app, err := ui.NewApp(ui.AppOptions{
 		Config:         cfg,
@@ -112,10 +112,9 @@ func runTUIChat(ctx context.Context, handler *chat.ChatHandler) error {
 	if err != nil {
 		return fmt.Errorf("failed to create app: %w", err)
 	}
-	
+
 	return app.Run()
 }
-
 
 func setupChatHandler(ctx context.Context) (*chat.ChatHandler, error) {
 	cfg := GetConfig()
@@ -158,7 +157,7 @@ func setupChatHandler(ctx context.Context) (*chat.ChatHandler, error) {
 	}
 
 	// Create chat handler
-	handler := chat.NewChatHandler(aiClient, toolManager, sessionManager, cfg, history)
+	handler := chat.NewChatHandler(aiClient, toolManager, GetMCPManager(), sessionManager, cfg, history)
 
 	// Create and set prompt builder
 	promptBuilder := chat.NewPromptBuilder(cfg.AI.MaxTokens, nil)
@@ -281,7 +280,6 @@ func loadPreviousSession(sessionManager *chat.SessionManager, specificID string)
 
 	return nil
 }
-
 
 func getDataDir() string {
 	// Get data directory

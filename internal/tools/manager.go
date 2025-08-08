@@ -170,11 +170,11 @@ func (m *Manager) GetSecurityValidator() SecurityValidator {
 func (m *Manager) GetAll() []Tool {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	
+
 	tools := make([]Tool, 0, len(m.tools))
 	for _, tool := range m.tools {
 		tools = append(tools, tool)
 	}
-	
+
 	return tools
 }

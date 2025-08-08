@@ -72,18 +72,18 @@ type Styles struct {
 	BorderFocused lipgloss.Style
 
 	// Text styles
-	Bold      lipgloss.Style
-	Italic    lipgloss.Style
-	Code      lipgloss.Style
-	Quote     lipgloss.Style
-	Link      lipgloss.Style
-	
+	Bold   lipgloss.Style
+	Italic lipgloss.Style
+	Code   lipgloss.Style
+	Quote  lipgloss.Style
+	Link   lipgloss.Style
+
 	// Scrollbar styles
 	ScrollbarTrack lipgloss.Style
 	ScrollbarThumb lipgloss.Style
-	Muted     lipgloss.Style
-	Primary   lipgloss.Style
-	Highlight lipgloss.Style
+	Muted          lipgloss.Style
+	Primary        lipgloss.Style
+	Highlight      lipgloss.Style
 
 	// UI element styles
 	Button       lipgloss.Style
@@ -283,10 +283,10 @@ func (t *DefaultTheme) GetStyles() Styles {
 		Link: lipgloss.NewStyle().
 			Foreground(colors.Info).
 			Underline(true),
-		
+
 		ScrollbarTrack: lipgloss.NewStyle().
 			Foreground(colors.Muted),
-		
+
 		ScrollbarThumb: lipgloss.NewStyle().
 			Foreground(colors.Primary),
 

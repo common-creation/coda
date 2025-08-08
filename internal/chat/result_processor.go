@@ -2,8 +2,8 @@ package chat
 
 import (
 	"encoding/json"
-	"path/filepath"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"

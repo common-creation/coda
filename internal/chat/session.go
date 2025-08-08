@@ -37,7 +37,7 @@ type TokenCounter interface {
 }
 
 // SimpleTokenCounter provides a simple token counting implementation
-type SimpleTokenCounter struct{
+type SimpleTokenCounter struct {
 	model string
 }
 
@@ -325,27 +325,27 @@ func (sm *SessionManager) ClearMessages(id string) error {
 func (sm *SessionManager) GetCurrent() *Session {
 	sm.mu.RLock()
 	defer sm.mu.RUnlock()
-	
+
 	if sm.currentSession == "" {
 		return nil
 	}
-	
+
 	session, exists := sm.sessions[sm.currentSession]
 	if !exists {
 		return nil
 	}
-	
+
 	return session
 }
 
 // CreateSession creates a new session and sets it as current
 func (sm *SessionManager) CreateSession() (string, error) {
 	session := sm.NewSession()
-	
+
 	sm.mu.Lock()
 	sm.currentSession = session.ID
 	sm.mu.Unlock()
-	
+
 	return session.ID, nil
 }
 
@@ -353,11 +353,11 @@ func (sm *SessionManager) CreateSession() (string, error) {
 func (sm *SessionManager) SetCurrent(id string) error {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
-	
+
 	if _, exists := sm.sessions[id]; !exists {
 		return fmt.Errorf("session not found: %s", id)
 	}
-	
+
 	sm.currentSession = id
 	return nil
 }

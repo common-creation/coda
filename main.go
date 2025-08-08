@@ -15,8 +15,56 @@ limitations under the License.
 */
 package main
 
-import "github.com/common-creation/coda/cmd"
+import (
+	"context"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
+	"github.com/common-creation/coda/cmd"
+)
 
 func main() {
+	// Create context for graceful shutdown
+	_, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Set up signal handling for graceful shutdown
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+
+	// Start shutdown handler in background
+	go func() {
+		<-sigChan
+		cmd.ShowInfo("Shutting down gracefully...")
+
+		// Cancel context to signal shutdown
+		cancel()
+
+		// Attempt graceful MCP shutdown with timeout
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer shutdownCancel()
+
+		done := make(chan struct{})
+		go func() {
+			defer close(done)
+			if err := cmd.ShutdownMCP(); err != nil {
+				cmd.ShowWarning("Error shutting down MCP: %v", err)
+			}
+		}()
+
+		select {
+		case <-done:
+			cmd.ShowInfo("MCP shutdown completed")
+		case <-shutdownCtx.Done():
+			cmd.ShowWarning("MCP shutdown timed out")
+		}
+
+		// Force exit if needed
+		os.Exit(0)
+	}()
+
+	// Execute the main command
 	cmd.Execute()
 }

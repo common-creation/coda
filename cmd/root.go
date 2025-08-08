@@ -21,10 +21,12 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/charmbracelet/log"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
 	"github.com/common-creation/coda/internal/config"
+	"github.com/common-creation/coda/internal/mcp"
 )
 
 var (
@@ -32,7 +34,8 @@ var (
 	debugMode  bool
 	noColor    bool
 	cfg        *config.Config
-	
+	mcpManager mcp.Manager
+
 	// Version information
 	appVersion string
 	appCommit  string
@@ -119,6 +122,11 @@ func initConfig() {
 	if noColor || os.Getenv("NO_COLOR") != "" {
 		disableColors()
 	}
+
+	// Initialize MCP manager
+	if err := initializeMCP(cfg); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: Failed to initialize MCP: %v\n", err)
+	}
 }
 
 func loadConfiguration() (*config.Config, error) {
@@ -180,14 +188,14 @@ func runRoot(cmd *cobra.Command, args []string) error {
 	if helpFlag {
 		return cmd.Help()
 	}
-	
+
 	// If any arguments are provided, or if we should start chat by default,
 	// run the chat command directly
 	if len(args) > 0 || shouldStartChatByDefault() {
 		// Execute chat command with the provided arguments
 		return runChat(cmd, args)
 	}
-	
+
 	// Default behavior: show help
 	return cmd.Help()
 }
@@ -263,4 +271,84 @@ func CheckError(err error, message string) {
 			ExitWithError("%v", err)
 		}
 	}
+}
+
+// initializeMCP initializes the MCP manager
+func initializeMCP(cfg *config.Config) error {
+	// Create logger for MCP
+	logger := log.New(os.Stderr)
+	if debugMode {
+		logger.SetLevel(log.DebugLevel)
+	}
+
+	// Create MCP manager
+	mcpManager = mcp.NewManager(logger)
+
+	// TODO: MCP-Tool integration needs to be implemented properly
+	// The type mismatch between mcp.Manager and tools.MCPManager needs to be resolved
+	//
+	// Create tool manager for MCP integration
+	// validator := security.NewDefaultValidator(".")
+	// wrappedValidator := &securityValidatorWrapper{validator: validator}
+	// toolManager := tools.NewManager(wrappedValidator, &simpleLogger{})
+	//
+	// Register basic tools
+	// toolManager.Register(tools.NewReadFileTool(wrappedValidator))
+	// toolManager.Register(tools.NewWriteFileTool(wrappedValidator))
+	// toolManager.Register(tools.NewEditFileTool(wrappedValidator))
+	// toolManager.Register(tools.NewListFilesTool(wrappedValidator))
+	// toolManager.Register(tools.NewSearchFilesTool(wrappedValidator))
+
+	// Create tool registry for MCP integration
+	// toolRegistry := tools.NewMCPRegistry(toolManager, mcpManager, logger)
+	// mcpManager.SetToolRegistry(toolRegistry)
+
+	// Load MCP configuration
+	configPaths := []string{}
+	if cfgFile != "" {
+		// Try to load MCP config from the same directory as main config
+		dir := filepath.Dir(cfgFile)
+		configPaths = append(configPaths, filepath.Join(dir, "mcp.json"))
+	}
+
+	// Add default MCP config paths
+	home, err := os.UserHomeDir()
+	if err == nil {
+		configPaths = append(configPaths,
+			filepath.Join(home, ".coda", "mcp.json"),
+			filepath.Join(home, ".config", "coda", "mcp.json"),
+		)
+	}
+	configPaths = append(configPaths, "mcp.json", ".mcp.json")
+
+	// Load MCP configuration (non-fatal if not found)
+	if err := mcpManager.LoadConfig(configPaths); err != nil {
+		if debugMode {
+			logger.Debug("MCP configuration not loaded", "error", err)
+		}
+		// Not a fatal error - MCP can work without configuration
+		return nil
+	}
+
+	if debugMode {
+		logger.Debug("MCP manager initialized successfully")
+	}
+
+	return nil
+}
+
+// GetMCPManager returns the MCP manager instance
+func GetMCPManager() mcp.Manager {
+	return mcpManager
+}
+
+// ShutdownMCP gracefully shuts down the MCP manager
+func ShutdownMCP() error {
+	if mcpManager != nil {
+		if debugMode {
+			fmt.Println("Shutting down MCP servers...")
+		}
+		return mcpManager.StopAll()
+	}
+	return nil
 }

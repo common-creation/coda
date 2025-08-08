@@ -438,7 +438,7 @@ func GetProjectSessionPath() (string, error) {
 
 	// Create session path: ~/.coda/sessions/{project-hash}/
 	sessionPath := filepath.Join(homeDir, ".coda", "sessions", projectHash)
-	
+
 	// Create project info file to track which directory this hash represents
 	infoPath := filepath.Join(homeDir, ".coda", "sessions", projectHash, ".project-info")
 	if err := os.MkdirAll(filepath.Dir(infoPath), 0755); err != nil {
@@ -447,11 +447,11 @@ func GetProjectSessionPath() (string, error) {
 
 	// Write project info
 	info := map[string]string{
-		"path": cwd,
-		"name": filepath.Base(cwd),
+		"path":    cwd,
+		"name":    filepath.Base(cwd),
 		"created": time.Now().Format(time.RFC3339),
 	}
-	
+
 	data, err := json.MarshalIndent(info, "", "  ")
 	if err == nil {
 		_ = os.WriteFile(infoPath, data, 0644)

@@ -26,7 +26,7 @@ func NewTextToolCallParser() *TextToolCallParser {
 	// Pattern to match JSON objects that look like tool calls
 	// Matches: {"tool": "tool_name", "arguments": {...}}
 	pattern := regexp.MustCompile(`\{"tool"\s*:\s*"[^"]+"\s*,\s*"arguments"\s*:\s*\{[^}]*\}\}`)
-	
+
 	return &TextToolCallParser{
 		toolCallPattern: pattern,
 	}
@@ -40,7 +40,7 @@ func (p *TextToolCallParser) ParseToolCalls(content string) ([]ai.ToolCall, erro
 	}
 
 	var toolCalls []ai.ToolCall
-	
+
 	for i, match := range matches {
 		// Parse the JSON
 		var textCall TextToolCall
@@ -75,18 +75,18 @@ func (p *TextToolCallParser) ParseToolCalls(content string) ([]ai.ToolCall, erro
 func (p *TextToolCallParser) ExtractContentWithoutToolCalls(content string) string {
 	// Remove tool call JSON patterns from the content
 	cleanContent := p.toolCallPattern.ReplaceAllString(content, "")
-	
+
 	// Clean up extra whitespace and newlines
 	lines := strings.Split(cleanContent, "\n")
 	var cleanLines []string
-	
+
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
 		if line != "" {
 			cleanLines = append(cleanLines, line)
 		}
 	}
-	
+
 	return strings.Join(cleanLines, "\n")
 }
 
@@ -95,7 +95,7 @@ func (p *TextToolCallParser) SplitMessages(content string) []string {
 	// Split by the separator pattern
 	separator := "\n----\n"
 	parts := strings.Split(content, separator)
-	
+
 	// Trim each part and filter out empty ones
 	var messages []string
 	for _, part := range parts {
@@ -104,12 +104,12 @@ func (p *TextToolCallParser) SplitMessages(content string) []string {
 			messages = append(messages, trimmed)
 		}
 	}
-	
+
 	// If no separator was found, return the original content as a single message
 	if len(messages) == 0 && strings.TrimSpace(content) != "" {
 		messages = append(messages, strings.TrimSpace(content))
 	}
-	
+
 	return messages
 }
 
@@ -118,17 +118,17 @@ func (p *TextToolCallParser) SplitMessages(content string) []string {
 func (p *TextToolCallParser) ParseMessage(content string) (string, []ai.ToolCall, error) {
 	// First, check if the message contains the separator
 	messages := p.SplitMessages(content)
-	
+
 	var allToolCalls []ai.ToolCall
 	var cleanTexts []string
-	
+
 	for _, msg := range messages {
 		// Check if this message part is a tool call
 		toolCalls, err := p.ParseToolCalls(msg)
 		if err != nil {
 			return "", nil, err
 		}
-		
+
 		if len(toolCalls) > 0 {
 			// This part contains tool calls
 			allToolCalls = append(allToolCalls, toolCalls...)
@@ -137,10 +137,10 @@ func (p *TextToolCallParser) ParseMessage(content string) (string, []ai.ToolCall
 			cleanTexts = append(cleanTexts, msg)
 		}
 	}
-	
+
 	// Join clean text parts
 	cleanContent := strings.Join(cleanTexts, "\n\n")
-	
+
 	return cleanContent, allToolCalls, nil
 }
 
@@ -149,11 +149,11 @@ func (p *TextToolCallParser) ValidateToolCall(toolCall TextToolCall) error {
 	if toolCall.Tool == "" {
 		return fmt.Errorf("tool name cannot be empty")
 	}
-	
+
 	if toolCall.Arguments == nil {
 		return fmt.Errorf("arguments cannot be nil")
 	}
-	
+
 	// Add more validation as needed
 	return nil
 }
@@ -178,23 +178,23 @@ func NewStreamingParser() *StreamingParser {
 func (sp *StreamingParser) AddChunk(chunk string) ([]ai.ToolCall, string, error) {
 	sp.buffer.WriteString(chunk)
 	content := sp.buffer.String()
-	
+
 	// Try to extract tool calls from current buffer
 	toolCalls, err := sp.ParseToolCalls(content)
 	if err != nil {
 		return nil, "", err
 	}
-	
+
 	// Extract clean content (without tool calls)
 	cleanContent := sp.ExtractContentWithoutToolCalls(content)
-	
+
 	// If we found tool calls, we need to determine what part of the buffer to keep
 	if len(toolCalls) > 0 {
 		// For now, reset the buffer after finding tool calls
 		// In a more sophisticated implementation, we might keep partial JSON
 		sp.buffer.Reset()
 	}
-	
+
 	return toolCalls, cleanContent, nil
 }
 

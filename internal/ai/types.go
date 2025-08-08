@@ -254,7 +254,7 @@ type FunctionTool struct {
 type ToolCall struct {
 	// Index of the tool call in the list
 	Index int `json:"index,omitempty"`
-	
+
 	// Unique identifier for this tool call
 	ID string `json:"id"`
 

@@ -419,7 +419,7 @@ func (rm *RecoveryManager) notifyErrorHandler(errorType ErrorType, err error, st
 
 	// Log the recovery attempt with metadata
 	handler.HandleWithContext(err, "recovery_attempt", metadata)
-	
+
 	handler.UpdateContext("recovery_stats", rm.GetRecoveryStats())
 }
 

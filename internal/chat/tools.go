@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/common-creation/coda/internal/ai"
+	"github.com/common-creation/coda/internal/mcp"
 	"github.com/common-creation/coda/internal/security"
 	"github.com/common-creation/coda/internal/tools"
 )
@@ -15,6 +16,7 @@ import (
 // ToolExecutor manages tool execution from AI responses
 type ToolExecutor struct {
 	manager     *tools.Manager
+	mcpManager  mcp.Manager
 	validator   security.SecurityValidator
 	approver    ApprovalHandler
 	concurrency int
@@ -73,9 +75,10 @@ func WithRetryPolicy(policy RetryPolicy) ToolExecutorOption {
 }
 
 // NewToolExecutor creates a new tool executor
-func NewToolExecutor(manager *tools.Manager, validator security.SecurityValidator, approver ApprovalHandler, opts ...ToolExecutorOption) *ToolExecutor {
+func NewToolExecutor(manager *tools.Manager, mcpManager mcp.Manager, validator security.SecurityValidator, approver ApprovalHandler, opts ...ToolExecutorOption) *ToolExecutor {
 	e := &ToolExecutor{
 		manager:     manager,
+		mcpManager:  mcpManager,
 		validator:   validator,
 		approver:    approver,
 		concurrency: 5, // Default concurrency
@@ -206,7 +209,40 @@ func (e *ToolExecutor) executeSingleTool(ctx context.Context, toolCall ai.ToolCa
 	// Execute with retry
 	var execErr error
 	for attempt := 1; attempt <= e.retryPolicy.MaxAttempts; attempt++ {
-		execResult, err := e.manager.Execute(ctx, toolCall.Function.Name, args)
+		var execResult interface{}
+		var err error
+
+		// Try regular tool manager first
+		_, managerErr := e.manager.Get(toolCall.Function.Name)
+		if managerErr == nil {
+			// Regular tool execution
+			execResult, err = e.manager.Execute(ctx, toolCall.Function.Name, args)
+		} else if e.mcpManager != nil {
+			// Try MCP tool execution
+			mcpTools, mcpErr := e.mcpManager.ListTools()
+			if mcpErr == nil {
+				found := false
+				var serverName string
+				for _, mcpTool := range mcpTools {
+					if mcpTool.Name == toolCall.Function.Name {
+						found = true
+						serverName = mcpTool.ServerName
+						break
+					}
+				}
+				if found {
+					// Execute MCP tool
+					execResult, err = e.mcpManager.ExecuteTool(serverName, toolCall.Function.Name, args)
+				} else {
+					err = fmt.Errorf("MCP tool not found: %s", toolCall.Function.Name)
+				}
+			} else {
+				err = mcpErr
+			}
+		} else {
+			err = fmt.Errorf("tool not available: %s", toolCall.Function.Name)
+		}
+
 		if err == nil {
 			result.Result = execResult
 			result.Duration = time.Since(startTime)
@@ -234,10 +270,29 @@ func (e *ToolExecutor) executeSingleTool(ctx context.Context, toolCall ai.ToolCa
 
 // validateToolCall performs security validation on a tool call
 func (e *ToolExecutor) validateToolCall(toolName string, args map[string]interface{}) error {
-	// Check if tool exists
+	// Check if tool exists in regular manager or MCP manager
 	_, err := e.manager.Get(toolName)
 	if err != nil {
-		return fmt.Errorf("tool not found: %s", toolName)
+		// Check if it's an MCP tool
+		if e.mcpManager != nil {
+			mcpTools, mcpErr := e.mcpManager.ListTools()
+			if mcpErr == nil {
+				found := false
+				for _, tool := range mcpTools {
+					if tool.Name == toolName {
+						found = true
+						break
+					}
+				}
+				if !found {
+					return fmt.Errorf("tool not found: %s", toolName)
+				}
+			} else {
+				return fmt.Errorf("tool not found: %s", toolName)
+			}
+		} else {
+			return fmt.Errorf("tool not found: %s", toolName)
+		}
 	}
 
 	// Validate based on tool type

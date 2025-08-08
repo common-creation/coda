@@ -12,6 +12,7 @@ import (
 
 	"github.com/common-creation/coda/internal/ai"
 	"github.com/common-creation/coda/internal/config"
+	"github.com/common-creation/coda/internal/mcp"
 	"github.com/common-creation/coda/internal/tokenizer"
 	"github.com/common-creation/coda/internal/tools"
 )
@@ -20,6 +21,7 @@ import (
 type ChatHandler struct {
 	aiClient      ai.Client
 	toolManager   *tools.Manager
+	mcpManager    mcp.Manager
 	session       *SessionManager
 	config        *config.Config
 	history       *History
@@ -41,7 +43,7 @@ type ChatResponse struct {
 }
 
 // NewChatHandler creates a new chat handler
-func NewChatHandler(aiClient ai.Client, toolManager *tools.Manager, session *SessionManager, cfg *config.Config, history *History) *ChatHandler {
+func NewChatHandler(aiClient ai.Client, toolManager *tools.Manager, mcpManager mcp.Manager, session *SessionManager, cfg *config.Config, history *History) *ChatHandler {
 	// Create a better token counter with the model from config
 	betterCounter := NewBetterTokenCounter(cfg.AI.Model)
 
@@ -59,9 +61,20 @@ func NewChatHandler(aiClient ai.Client, toolManager *tools.Manager, session *Ses
 		}
 	}
 
+	// Add MCP tools to prompt builder
+	if mcpManager != nil {
+		mcpTools, err := mcpManager.ListTools()
+		if err == nil {
+			for _, tool := range mcpTools {
+				promptBuilder.AddToolPrompt(tool.Name, tool.Description)
+			}
+		}
+	}
+
 	handler := &ChatHandler{
 		aiClient:      aiClient,
 		toolManager:   toolManager,
+		mcpManager:    mcpManager,
 		session:       session,
 		config:        cfg,
 		history:       history,

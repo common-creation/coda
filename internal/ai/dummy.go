@@ -57,7 +57,7 @@ func (r *dummyStreamReader) Read() (*StreamChunk, error) {
 	if r.finished {
 		return nil, io.EOF
 	}
-	
+
 	if r.index >= len(r.chunks) {
 		r.finished = true
 		finishReason := "stop"
@@ -75,7 +75,7 @@ func (r *dummyStreamReader) Read() (*StreamChunk, error) {
 			},
 		}, nil
 	}
-	
+
 	chunk := &StreamChunk{
 		ID:      "dummy-stream",
 		Object:  "chat.completion.chunk",
@@ -90,7 +90,7 @@ func (r *dummyStreamReader) Read() (*StreamChunk, error) {
 			},
 		},
 	}
-	
+
 	r.index++
 	return chunk, nil
 }
@@ -102,7 +102,7 @@ func (r *dummyStreamReader) Close() error {
 // ChatCompletionStream implements Client interface
 func (d *DummyClient) ChatCompletionStream(ctx context.Context, req ChatRequest) (StreamReader, error) {
 	message := "This is a dummy streaming response. The AI client is not properly configured yet. Please configure OpenAI or Azure OpenAI."
-	
+
 	// Split message into words for streaming
 	chunks := []string{}
 	words := []string{}
@@ -120,12 +120,12 @@ func (d *DummyClient) ChatCompletionStream(ctx context.Context, req ChatRequest)
 	if current != "" {
 		words = append(words, current)
 	}
-	
+
 	// Convert words to chunks
 	for _, word := range words {
 		chunks = append(chunks, word)
 	}
-	
+
 	return &dummyStreamReader{
 		chunks: chunks,
 		model:  d.model,

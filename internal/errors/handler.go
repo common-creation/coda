@@ -141,7 +141,7 @@ func NewErrorHandler(config Config) *ErrorHandler {
 	if err != nil {
 		logLevel = log.InfoLevel // Default to Info if parsing fails
 	}
-	
+
 	logger := log.NewWithOptions(os.Stderr, log.Options{
 		ReportCaller:    true,
 		ReportTimestamp: true,

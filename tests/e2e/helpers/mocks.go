@@ -48,7 +48,7 @@ func (r *mockStreamReader) Read() (*ai.StreamChunk, error) {
 
 	// Get current response
 	response := r.responses[r.index%len(r.responses)]
-	
+
 	// Check if we've sent all content
 	if r.position >= len(response) {
 		r.done = true

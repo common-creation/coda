@@ -42,10 +42,11 @@ func (m Mode) String() string {
 // KeyMap defines all key bindings for the application
 type KeyMap struct {
 	// Global bindings (work in all modes)
-	Quit    key.Binding
-	Help    key.Binding
-	Clear   key.Binding
-	Refresh key.Binding
+	Quit      key.Binding
+	Help      key.Binding
+	Clear     key.Binding
+	Refresh   key.Binding
+	MCPStatus key.Binding
 
 	// Navigation bindings
 	ScrollUp   key.Binding
@@ -147,21 +148,22 @@ type SearchModeKeyMap struct {
 
 // PermitModeKeyMap defines permit mode bindings for tool call approval
 type PermitModeKeyMap struct {
-	ExitMode    key.Binding // Exit permit mode (reject by default)
-	Approve     key.Binding // Approve the tool call
-	Reject      key.Binding // Reject the tool call
-	SelectPrev  key.Binding // Move selection to previous option (left arrow)
-	SelectNext  key.Binding // Move selection to next option (right arrow)
+	ExitMode   key.Binding // Exit permit mode (reject by default)
+	Approve    key.Binding // Approve the tool call
+	Reject     key.Binding // Reject the tool call
+	SelectPrev key.Binding // Move selection to previous option (left arrow)
+	SelectNext key.Binding // Move selection to next option (right arrow)
 }
 
 // DefaultKeyMap returns the default key mappings
 func DefaultKeyMap() KeyMap {
 	return KeyMap{
 		// Global bindings
-		Quit:    key.NewBinding(key.WithKeys("ctrl+c", "ctrl+d")),
-		Help:    key.NewBinding(key.WithKeys("?", "F1")),
-		Clear:   key.NewBinding(key.WithKeys("ctrl+l")),
-		Refresh: key.NewBinding(key.WithKeys("F5", "ctrl+r")),
+		Quit:      key.NewBinding(key.WithKeys("ctrl+c", "ctrl+d")),
+		Help:      key.NewBinding(key.WithKeys("?", "F1")),
+		Clear:     key.NewBinding(key.WithKeys("ctrl+l")),
+		Refresh:   key.NewBinding(key.WithKeys("F5", "ctrl+r")),
+		MCPStatus: key.NewBinding(key.WithKeys("ctrl+m")),
 
 		// Navigation
 		ScrollUp:   key.NewBinding(key.WithKeys("up", "k")),
@@ -378,6 +380,7 @@ func (km KeyMap) Validate() []string {
 	addKeys(km.Help, "global.help")
 	addKeys(km.Clear, "global.clear")
 	addKeys(km.Refresh, "global.refresh")
+	addKeys(km.MCPStatus, "global.mcp_status")
 	addKeys(km.ScrollUp, "global.scroll_up")
 	addKeys(km.ScrollDown, "global.scroll_down")
 	addKeys(km.PageUp, "global.page_up")
@@ -436,6 +439,7 @@ func (km KeyMap) GetHelpText(mode Mode) []string {
 	help = append(help, fmt.Sprintf("  %s: Show/hide help", km.getKeyStrings(km.Help)))
 	help = append(help, fmt.Sprintf("  %s: Clear screen", km.getKeyStrings(km.Clear)))
 	help = append(help, fmt.Sprintf("  %s: Refresh view", km.getKeyStrings(km.Refresh)))
+	help = append(help, fmt.Sprintf("  %s: Show MCP status", km.getKeyStrings(km.MCPStatus)))
 	help = append(help, "")
 
 	// Add navigation bindings
