@@ -6,7 +6,10 @@
       "Bash(make:*)",
       "WebFetch(domain:github.com)",
       "WebFetch(domain:pkg.go.dev)",
-      "Bash(go test:*)"
+      "Bash(go test:*)",
+      "Bash(go run:*)",
+      "WebFetch(domain:platform.openai.com)",
+      "Bash(grep:*)"
     ],
     "deny": []
   }

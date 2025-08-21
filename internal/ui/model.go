@@ -104,6 +104,12 @@ type Model struct {
 	cursorStyle      lipgloss.Style // 文字列中のカーソル用（背景色反転）
 	blockCursorStyle lipgloss.Style // 行末カーソル用（ブロックシンボル）
 
+	// Input scroll position
+	inputScrollPosition int // 入力欄のスクロール位置
+	inputNeedsScrollbar bool // 入力欄にスクロールバーが必要か
+	inputTotalLines     int  // 入力の総行数
+	inputDisplayHeight  int  // 表示される行数
+
 	// Dependencies
 	config           *config.Config
 	chatHandler      *chat.ChatHandler
@@ -208,6 +214,12 @@ func NewModel(opts ModelOptions) Model {
 		// Initialize cursor styles
 		cursorStyle:      lipgloss.NewStyle().Reverse(true),
 		blockCursorStyle: lipgloss.NewStyle(),
+
+		// Initialize input scroll position
+		inputScrollPosition: 0,
+		inputNeedsScrollbar: false,
+		inputTotalLines:     0,
+		inputDisplayHeight:  0,
 
 		// Set dependencies
 		config:           opts.Config,
@@ -723,6 +735,7 @@ func (m Model) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.currentInput = ""
 			m.cursorPosition = 0
 			m.cursorColumn = 0
+			m.inputScrollPosition = 0
 			m.escMessage = ""
 			m.lastEscTime = time.Time{}
 			return m, nil
@@ -743,6 +756,7 @@ func (m Model) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.currentInput = ""
 			m.cursorPosition = 0
 			m.cursorColumn = 0
+			m.inputScrollPosition = 0
 			m.error = nil
 			m.loading = false
 			m.streamingContent.Reset()
@@ -1205,6 +1219,7 @@ func (m *Model) sendMessage() (tea.Model, tea.Cmd) {
 	m.currentInput = ""
 	m.cursorPosition = 0
 	m.cursorColumn = 0
+	m.inputScrollPosition = 0
 	m.loading = true
 	m.loadingStart = time.Now()
 	m.error = nil
@@ -1325,6 +1340,53 @@ func (m Model) renderLoadingMessage() string {
 	}
 
 	return loadingMsg
+}
+
+// renderInputScrollbar renders a vertical scrollbar for the input area
+func (m Model) renderInputScrollbar(totalLines, visibleLines, scrollPosition int) string {
+	// Don't render scrollbar if content fits
+	if totalLines <= visibleLines {
+		return ""
+	}
+
+	// Calculate scrollbar height and position
+	scrollbarHeight := visibleLines
+	scrollPercent := float64(scrollPosition) / float64(totalLines - visibleLines)
+	if scrollPercent < 0 {
+		scrollPercent = 0
+	}
+	if scrollPercent > 1 {
+		scrollPercent = 1
+	}
+
+	// Calculate thumb size (minimum 1 line)
+	thumbSize := int(float64(scrollbarHeight) * float64(visibleLines) / float64(totalLines))
+	if thumbSize < 1 {
+		thumbSize = 1
+	}
+
+	// Calculate thumb position
+	thumbPosition := int(float64(scrollbarHeight-thumbSize) * scrollPercent)
+
+	// Build scrollbar
+	var scrollbar strings.Builder
+	scrollbarStyle := m.styles.ScrollbarTrack
+	thumbStyle := m.styles.ScrollbarThumb
+
+	for i := 0; i < scrollbarHeight; i++ {
+		if i >= thumbPosition && i < thumbPosition+thumbSize {
+			// Render thumb
+			scrollbar.WriteString(thumbStyle.Render("█"))
+		} else {
+			// Render track
+			scrollbar.WriteString(scrollbarStyle.Render("│"))
+		}
+		if i < scrollbarHeight-1 {
+			scrollbar.WriteString("\n")
+		}
+	}
+
+	return scrollbar.String()
 }
 
 // renderScrollbar renders a vertical scrollbar for the viewport
@@ -1549,7 +1611,40 @@ func (m Model) renderInput() string {
 	case ModeSearch:
 		content = fmt.Sprintf("%s_", m.searchBuffer)
 	case ModeInsert, ModeScroll:
-		return m.renderMultilineInput()
+		inputView, hasScrollbar := m.renderMultilineInput()
+		if !hasScrollbar {
+			return inputView
+		}
+		
+		// スクロールバーが必要な場合は行ごとに結合
+		scrollbarView := m.renderInputScrollbar(m.inputTotalLines, m.inputDisplayHeight, m.inputScrollPosition)
+		
+		// 入力欄とスクロールバーを行ごとに結合
+		inputLines := strings.Split(inputView, "\n")
+		scrollLines := strings.Split(scrollbarView, "\n")
+		
+		var combined []string
+		maxLines := len(inputLines)
+		if len(scrollLines) > maxLines {
+			maxLines = len(scrollLines)
+		}
+		
+		for i := 0; i < maxLines; i++ {
+			var inputLine, scrollLine string
+			
+			if i < len(inputLines) {
+				inputLine = inputLines[i]
+			}
+			if i < len(scrollLines) {
+				scrollLine = scrollLines[i]
+			}
+			
+			// 入力欄とスクロールバーを結合
+			combined = append(combined, inputLine + scrollLine)
+		}
+		
+		return strings.Join(combined, "\n")
+		
 	case ModePermit:
 		return m.renderPermitDialog()
 	case ModeNormal:
@@ -1559,7 +1654,39 @@ func (m Model) renderInput() string {
 			content = "Press 'i' to enter insert mode, ':' for commands, '/' to search"
 		}
 	default:
-		return m.renderMultilineInput()
+		inputView, hasScrollbar := m.renderMultilineInput()
+		if !hasScrollbar {
+			return inputView
+		}
+		
+		// スクロールバーが必要な場合は行ごとに結合
+		scrollbarView := m.renderInputScrollbar(m.inputTotalLines, m.inputDisplayHeight, m.inputScrollPosition)
+		
+		// 入力欄とスクロールバーを行ごとに結合
+		inputLines := strings.Split(inputView, "\n")
+		scrollLines := strings.Split(scrollbarView, "\n")
+		
+		var combined []string
+		maxLines := len(inputLines)
+		if len(scrollLines) > maxLines {
+			maxLines = len(scrollLines)
+		}
+		
+		for i := 0; i < maxLines; i++ {
+			var inputLine, scrollLine string
+			
+			if i < len(inputLines) {
+				inputLine = inputLines[i]
+			}
+			if i < len(scrollLines) {
+				scrollLine = scrollLines[i]
+			}
+			
+			// 入力欄とスクロールバーを結合
+			combined = append(combined, inputLine + scrollLine)
+		}
+		
+		return strings.Join(combined, "\n")
 	}
 
 	// ModeCommand, ModeSearch, ModeNormalの場合は罫線で囲む
@@ -1575,17 +1702,30 @@ func (m Model) renderInput() string {
 }
 
 // renderMultilineInput renders the input area with multiline support
-func (m Model) renderMultilineInput() string {
+func (m *Model) renderMultilineInput() (string, bool) {
 	lines := strings.Split(m.currentInput, "\n")
 
 	// カーソル位置を行と列に変換
 	cursorLine, cursorCol := m.getCursorLineAndColumn()
 
-	// 設定から表示行数を取得（0の場合は無制限）
-	displayLimit := m.config.UI.InputDisplayLines
+	// 画面の半分を最大高さとして計算
+	maxInputHeight := m.height / 2
+	if maxInputHeight < 3 {
+		maxInputHeight = 3 // 最小3行は確保
+	}
+	if maxInputHeight > 30 {
+		maxInputHeight = 30 // 最大30行に制限
+	}
+
+	// 実際の表示行数を決定（入力行数と最大高さの小さい方）
+	displayHeight := len(lines)
+	if displayHeight > maxInputHeight {
+		displayHeight = maxInputHeight
+	}
 
 	// 入力内容を構築
 	var content string
+	needsScrollbar := len(lines) > maxInputHeight
 
 	// 単一行の場合の特別処理
 	if len(lines) == 1 {
@@ -1608,29 +1748,54 @@ func (m Model) renderMultilineInput() string {
 			// Inputモードの場合はコーポレートカラー
 			style = style.BorderForeground(lipgloss.Color("#b40028"))
 		}
-		// Scrollモードその他の場合はデフォルトのグレー
 
-		// ターミナル幅に合わせて調整（左右のパディングとボーダーを考慮）
+		// ターミナル幅に合わせて調整（スクロールバー分も考慮）
 		contentWidth := m.width - 4 // ボーダーとパディング分を引く
+		if needsScrollbar {
+			contentWidth -= 2 // スクロールバー分のスペース
+		}
 		if contentWidth < 20 {
 			contentWidth = 20 // 最小幅
 		}
 
-		return style.Width(contentWidth).Render(content)
+		return style.Width(contentWidth).Render(content), needsScrollbar
 	}
 
-	// 表示する行の範囲を決定
-	displayLines := lines
-	startLine := 0
-
-	if displayLimit > 0 && len(lines) > displayLimit {
+	// 複数行の場合：スクロール位置を計算
+	startLine := m.inputScrollPosition
+	if needsScrollbar {
 		// カーソルが表示範囲内に収まるように調整
-		if cursorLine >= displayLimit {
-			startLine = cursorLine - displayLimit + 1
+		if cursorLine < startLine {
+			startLine = cursorLine
+			m.inputScrollPosition = startLine
+		} else if cursorLine >= startLine + displayHeight {
+			startLine = cursorLine - displayHeight + 1
+			m.inputScrollPosition = startLine
 		}
-		displayLines = lines[startLine : startLine+displayLimit]
+		
+		// startLineが範囲外にならないように調整
+		if startLine > len(lines) - displayHeight {
+			startLine = len(lines) - displayHeight
+			m.inputScrollPosition = startLine
+		}
+		if startLine < 0 {
+			startLine = 0
+			m.inputScrollPosition = 0
+		}
+	} else {
+		// スクロールバーが不要な場合はリセット
+		startLine = 0
+		m.inputScrollPosition = 0
 	}
 
+	// 表示する行を抽出
+	endLine := startLine + displayHeight
+	if endLine > len(lines) {
+		endLine = len(lines)
+	}
+	displayLines := lines[startLine:endLine]
+
+	// 入力内容を構築
 	result := ""
 	for i, line := range displayLines {
 		actualLine := startLine + i
@@ -1663,36 +1828,35 @@ func (m Model) renderMultilineInput() string {
 		result = result[:len(result)-1]
 	}
 
-	// 省略された行がある場合は表示
-	if startLine > 0 {
-		result = fmt.Sprintf("  ... (%d more lines above)\n%s", startLine, result)
-	}
-	if displayLimit > 0 && len(lines) > startLine+displayLimit {
-		result = fmt.Sprintf("%s\n  ... (%d more lines below)", result,
-			len(lines)-startLine-displayLimit)
-	}
-
 	// 罫線で囲む（モードに応じて色を変更）
 	style := m.styles.UserInput
 	if m.currentMode == ModeInsert {
 		// Inputモードの場合はコーポレートカラー
 		style = style.BorderForeground(lipgloss.Color("#b40028"))
 	}
-	// Scrollモードその他の場合はデフォルトのグレー
 
 	// ターミナル幅に合わせて調整
 	contentWidth := m.width - 4 // ボーダーとパディング分を引く
+	if needsScrollbar {
+		contentWidth -= 2 // スクロールバー分のスペース
+	}
 	if contentWidth < 20 {
 		contentWidth = 20 // 最小幅
 	}
 
-	return style.Width(contentWidth).Render(result)
+	// スクロール情報を保存（renderInputScrollbarで使用）
+	m.inputNeedsScrollbar = needsScrollbar
+	m.inputTotalLines = len(lines)
+	m.inputDisplayHeight = displayHeight
+
+	return style.Width(contentWidth).Render(result), needsScrollbar
 }
 
 // renderPermitDialog renders the tool call permission dialog
 func (m Model) renderPermitDialog() string {
 	if !m.permitDialogVisible || len(m.pendingToolCalls) == 0 {
-		return m.renderMultilineInput() // Fallback to normal input
+		inputView, _ := m.renderMultilineInput() // Fallback to normal input
+		return inputView
 	}
 
 	var dialogContent strings.Builder

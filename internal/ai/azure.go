@@ -285,6 +285,16 @@ func (c *AzureClient) convertChatRequest(req ChatRequest) (openai.ChatCompletion
 		azureReq.ResponseFormat = &openai.ChatCompletionResponseFormat{
 			Type: openai.ChatCompletionResponseFormatType(req.ResponseFormat.Type),
 		}
+		
+		// Add JSON Schema if provided (for Structured Outputs)
+		if req.ResponseFormat.Type == "json_schema" && req.ResponseFormat.JSONSchema != nil {
+			azureReq.ResponseFormat.JSONSchema = &openai.ChatCompletionResponseFormatJSONSchema{
+				Name:        req.ResponseFormat.JSONSchema.Name,
+				Description: req.ResponseFormat.JSONSchema.Description,
+				Schema:      req.ResponseFormat.JSONSchema.Schema,
+				Strict:      req.ResponseFormat.JSONSchema.Strict,
+			}
+		}
 	}
 
 	return azureReq, nil

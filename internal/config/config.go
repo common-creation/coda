@@ -53,6 +53,9 @@ type AIConfig struct {
 	// Reasoning effort for GPT-5 models (optional)
 	// Valid values: "minimal", "low", "medium", "high"
 	ReasoningEffort *string `yaml:"reasoning_effort,omitempty" json:"reasoning_effort,omitempty"`
+	
+	// Use Structured Outputs for tool calls (requires GPT-4o-2024-08-06 or later)
+	UseStructuredOutputs bool `yaml:"use_structured_outputs" json:"use_structured_outputs"`
 }
 
 // OpenAIConfig contains OpenAI specific settings
@@ -178,7 +181,7 @@ func NewDefaultConfig() *Config {
 			SyntaxHighlighting: true,
 			MarkdownRendering:  true,
 			KeyBindings:        "default",
-			InputDisplayLines:  3,
+			InputDisplayLines:  0, // 0 = dynamic sizing up to half screen
 		},
 		Logging: logging.DefaultConfig(),
 		Session: SessionConfig{

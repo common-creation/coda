@@ -2,6 +2,7 @@ package chat
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -131,7 +132,7 @@ func (h *ChatHandler) HandleMessageWithResponse(ctx context.Context, input strin
 	// Build messages for AI request
 	messages := h.buildMessages(currentSession)
 
-	// Create chat request with streaming enabled (no tools - using text-based tool calling)
+	// Create chat request with streaming enabled
 	req := ai.ChatRequest{
 		Model:           h.config.AI.Model,
 		Messages:        messages,
@@ -139,6 +140,19 @@ func (h *ChatHandler) HandleMessageWithResponse(ctx context.Context, input strin
 		MaxTokens:       &h.config.AI.MaxTokens,
 		Stream:          true, // Enable streaming
 		ReasoningEffort: h.config.AI.ReasoningEffort,
+	}
+	
+	// Enable Structured Outputs if configured
+	if h.config.AI.UseStructuredOutputs {
+		req.ResponseFormat = &ai.ResponseFormat{
+			Type: "json_schema",
+			JSONSchema: &ai.JSONSchema{
+				Name:        "tool_response",
+				Description: "Structured response with optional tool calls",
+				Schema:      GetToolCallSchema(),
+				Strict:      true,
+			},
+		}
 	}
 
 	// Send request to AI with streaming
@@ -148,11 +162,14 @@ func (h *ChatHandler) HandleMessageWithResponse(ctx context.Context, input strin
 	}
 	defer stream.Close()
 
-	// Process streaming response with text-based tool call parsing
+	// Process streaming response
 	var fullContent strings.Builder
 	var toolCalls []ai.ToolCall
 	var totalUsage ai.Usage
-	textParser := NewTextToolCallParser()
+	
+	// Use structured output parser if enabled, otherwise use text parser
+	useStructuredOutputs := h.config.AI.UseStructuredOutputs
+	textParser := NewTextToolCallParser() // Still needed as fallback
 
 	// Reset streaming tokens at start
 	h.streamingMutex.Lock()
@@ -192,12 +209,27 @@ func (h *ChatHandler) HandleMessageWithResponse(ctx context.Context, input strin
 			if delta.Content != "" {
 				fullContent.WriteString(delta.Content)
 
-				// Try to parse message with potential tool calls
+				// Parse based on mode
 				contentStr := fullContent.String()
-				_, parsedToolCalls, err := textParser.ParseMessage(contentStr)
-				if err == nil && len(parsedToolCalls) > 0 {
-					// Replace any existing tool calls with newly parsed ones
-					toolCalls = parsedToolCalls
+				
+				if useStructuredOutputs {
+					// Try to parse as structured JSON output
+					if toolResp, err := ParseStructuredOutput(contentStr); err == nil {
+						// Successfully parsed structured output
+						if len(toolResp.ToolCalls) > 0 {
+							// Convert structured tool calls to AI format
+							if aiToolCalls, err := ConvertToAIToolCalls(toolResp.ToolCalls); err == nil {
+								toolCalls = aiToolCalls
+							}
+						}
+					}
+				} else {
+					// Fallback to text-based parsing
+					_, parsedToolCalls, err := textParser.ParseMessage(contentStr)
+					if err == nil && len(parsedToolCalls) > 0 {
+						// Replace any existing tool calls with newly parsed ones
+						toolCalls = parsedToolCalls
+					}
 				}
 
 				// Calculate tokens for current content using tokenizer
@@ -254,10 +286,78 @@ func (h *ChatHandler) HandleMessageWithResponse(ctx context.Context, input strin
 	h.streamingTokens = 0
 	h.streamingMutex.Unlock()
 
-	// Parse final message to extract clean content and tool calls
-	cleanContent, finalToolCalls, _ := textParser.ParseMessage(fullContent.String())
-	if len(finalToolCalls) > 0 {
-		toolCalls = finalToolCalls
+	// Debug: Log complete response JSON if debug mode is enabled
+	if h.config.Logging.Level == "debug" {
+		debugFile, err := os.OpenFile("/tmp/coda-debug.log", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+		if err == nil && debugFile != nil {
+			defer debugFile.Close()
+			
+			// Create a complete response structure for debugging
+			responseDebug := map[string]interface{}{
+				"timestamp":       time.Now().Format(time.RFC3339),
+				"model":           h.config.AI.Model,
+				"full_content":    fullContent.String(),
+				"content_length":  fullContent.Len(),
+				"tool_calls_count": len(toolCalls),
+				"chunk_count":     chunkCount,
+				"usage": map[string]int{
+					"prompt_tokens":     totalUsage.PromptTokens,
+					"completion_tokens": totalUsage.CompletionTokens,
+					"total_tokens":      totalUsage.TotalTokens,
+				},
+			}
+			
+			// Add tool calls if present
+			if len(toolCalls) > 0 {
+				toolCallsDebug := make([]map[string]interface{}, len(toolCalls))
+				for i, tc := range toolCalls {
+					toolCallsDebug[i] = map[string]interface{}{
+						"id":   tc.ID,
+						"type": tc.Type,
+						"function": map[string]string{
+							"name":      tc.Function.Name,
+							"arguments": tc.Function.Arguments,
+						},
+					}
+				}
+				responseDebug["tool_calls"] = toolCallsDebug
+			}
+			
+			// Marshal to JSON and write as single line
+			if jsonData, err := json.Marshal(responseDebug); err == nil {
+				fmt.Fprintf(debugFile, "[ChatHandler] COMPLETE_RESPONSE_JSON: %s\n", string(jsonData))
+			}
+		}
+	}
+
+	// Parse final message based on mode
+	var cleanContent string
+	contentStr := fullContent.String()
+	
+	if useStructuredOutputs {
+		// Parse structured JSON output
+		if toolResp, err := ParseStructuredOutput(contentStr); err == nil {
+			// Successfully parsed structured output
+			if toolResp.Text != nil {
+				cleanContent = *toolResp.Text
+			}
+			if len(toolResp.ToolCalls) > 0 {
+				// Convert structured tool calls to AI format
+				if aiToolCalls, err := ConvertToAIToolCalls(toolResp.ToolCalls); err == nil {
+					toolCalls = aiToolCalls
+				}
+			}
+		} else {
+			// If parsing fails, use raw content
+			cleanContent = contentStr
+		}
+	} else {
+		// Use text parser for final extraction
+		parsedContent, finalToolCalls, _ := textParser.ParseMessage(contentStr)
+		cleanContent = parsedContent
+		if len(finalToolCalls) > 0 {
+			toolCalls = finalToolCalls
+		}
 	}
 
 	// Create final message
@@ -491,7 +591,7 @@ func (h *ChatHandler) ContinueConversation(ctx context.Context, tokenCallback fu
 	// Build messages for AI request (without adding new user message)
 	messages := h.buildMessages(currentSession)
 
-	// Create chat request with streaming enabled (no tools - using text-based tool calling)
+	// Create chat request with streaming enabled
 	req := ai.ChatRequest{
 		Model:           h.config.AI.Model,
 		Messages:        messages,
@@ -499,6 +599,19 @@ func (h *ChatHandler) ContinueConversation(ctx context.Context, tokenCallback fu
 		MaxTokens:       &h.config.AI.MaxTokens,
 		Stream:          true, // Enable streaming
 		ReasoningEffort: h.config.AI.ReasoningEffort,
+	}
+	
+	// Enable Structured Outputs if configured
+	if h.config.AI.UseStructuredOutputs {
+		req.ResponseFormat = &ai.ResponseFormat{
+			Type: "json_schema",
+			JSONSchema: &ai.JSONSchema{
+				Name:        "tool_response",
+				Description: "Structured response with optional tool calls",
+				Schema:      GetToolCallSchema(),
+				Strict:      true,
+			},
+		}
 	}
 
 	// Send request to AI with streaming
@@ -508,11 +621,14 @@ func (h *ChatHandler) ContinueConversation(ctx context.Context, tokenCallback fu
 	}
 	defer stream.Close()
 
-	// Process streaming response with text-based tool call parsing
+	// Process streaming response
 	var fullContent strings.Builder
 	var toolCalls []ai.ToolCall
 	var totalUsage ai.Usage
-	textParser := NewTextToolCallParser()
+	
+	// Use structured output parser if enabled, otherwise use text parser
+	useStructuredOutputs := h.config.AI.UseStructuredOutputs
+	textParser := NewTextToolCallParser() // Still needed as fallback
 
 	// Reset streaming tokens at start
 	h.streamingMutex.Lock()
@@ -539,12 +655,27 @@ func (h *ChatHandler) ContinueConversation(ctx context.Context, tokenCallback fu
 			if delta.Content != "" {
 				fullContent.WriteString(delta.Content)
 
-				// Try to parse message with potential tool calls
+				// Parse based on mode
 				contentStr := fullContent.String()
-				_, parsedToolCalls, err := textParser.ParseMessage(contentStr)
-				if err == nil && len(parsedToolCalls) > 0 {
-					// Replace any existing tool calls with newly parsed ones
-					toolCalls = parsedToolCalls
+				
+				if useStructuredOutputs {
+					// Try to parse as structured JSON output
+					if toolResp, err := ParseStructuredOutput(contentStr); err == nil {
+						// Successfully parsed structured output
+						if len(toolResp.ToolCalls) > 0 {
+							// Convert structured tool calls to AI format
+							if aiToolCalls, err := ConvertToAIToolCalls(toolResp.ToolCalls); err == nil {
+								toolCalls = aiToolCalls
+							}
+						}
+					}
+				} else {
+					// Fallback to text-based parsing
+					_, parsedToolCalls, err := textParser.ParseMessage(contentStr)
+					if err == nil && len(parsedToolCalls) > 0 {
+						// Replace any existing tool calls with newly parsed ones
+						toolCalls = parsedToolCalls
+					}
 				}
 
 				// Calculate tokens for current content using tokenizer
@@ -583,10 +714,78 @@ func (h *ChatHandler) ContinueConversation(ctx context.Context, tokenCallback fu
 	h.streamingTokens = 0
 	h.streamingMutex.Unlock()
 
-	// Parse final message to extract clean content and tool calls
-	cleanContent, finalToolCalls, _ := textParser.ParseMessage(fullContent.String())
-	if len(finalToolCalls) > 0 {
-		toolCalls = finalToolCalls
+	// Debug: Log complete response JSON if debug mode is enabled
+	if h.config.Logging.Level == "debug" {
+		debugFile, err := os.OpenFile("/tmp/coda-debug.log", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+		if err == nil && debugFile != nil {
+			defer debugFile.Close()
+			
+			// Create a complete response structure for debugging
+			responseDebug := map[string]interface{}{
+				"timestamp":       time.Now().Format(time.RFC3339),
+				"model":           h.config.AI.Model,
+				"full_content":    fullContent.String(),
+				"content_length":  fullContent.Len(),
+				"tool_calls_count": len(toolCalls),
+				"chunk_count":     chunkCount,
+				"usage": map[string]int{
+					"prompt_tokens":     totalUsage.PromptTokens,
+					"completion_tokens": totalUsage.CompletionTokens,
+					"total_tokens":      totalUsage.TotalTokens,
+				},
+			}
+			
+			// Add tool calls if present
+			if len(toolCalls) > 0 {
+				toolCallsDebug := make([]map[string]interface{}, len(toolCalls))
+				for i, tc := range toolCalls {
+					toolCallsDebug[i] = map[string]interface{}{
+						"id":   tc.ID,
+						"type": tc.Type,
+						"function": map[string]string{
+							"name":      tc.Function.Name,
+							"arguments": tc.Function.Arguments,
+						},
+					}
+				}
+				responseDebug["tool_calls"] = toolCallsDebug
+			}
+			
+			// Marshal to JSON and write as single line
+			if jsonData, err := json.Marshal(responseDebug); err == nil {
+				fmt.Fprintf(debugFile, "[ChatHandler] CONTINUE_RESPONSE_JSON: %s\n", string(jsonData))
+			}
+		}
+	}
+
+	// Parse final message based on mode
+	var cleanContent string
+	contentStr := fullContent.String()
+	
+	if useStructuredOutputs {
+		// Parse structured JSON output
+		if toolResp, err := ParseStructuredOutput(contentStr); err == nil {
+			// Successfully parsed structured output
+			if toolResp.Text != nil {
+				cleanContent = *toolResp.Text
+			}
+			if len(toolResp.ToolCalls) > 0 {
+				// Convert structured tool calls to AI format
+				if aiToolCalls, err := ConvertToAIToolCalls(toolResp.ToolCalls); err == nil {
+					toolCalls = aiToolCalls
+				}
+			}
+		} else {
+			// If parsing fails, use raw content
+			cleanContent = contentStr
+		}
+	} else {
+		// Use text parser for final extraction
+		parsedContent, finalToolCalls, _ := textParser.ParseMessage(contentStr)
+		cleanContent = parsedContent
+		if len(finalToolCalls) > 0 {
+			toolCalls = finalToolCalls
+		}
 	}
 
 	// Create final message

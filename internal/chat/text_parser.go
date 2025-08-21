@@ -17,8 +17,10 @@ type TextToolCall struct {
 
 // TextToolCallParser extracts tool calls from LLM text responses
 type TextToolCallParser struct {
-	// Pattern to match JSON tool calls in text
+	// Pattern to match JSON tool calls in text (old format)
 	toolCallPattern *regexp.Regexp
+	// Pattern to match structured JSON responses (new format)
+	structuredPattern *regexp.Regexp
 }
 
 // NewTextToolCallParser creates a new text tool call parser
@@ -26,14 +28,58 @@ func NewTextToolCallParser() *TextToolCallParser {
 	// Pattern to match JSON objects that look like tool calls
 	// Matches: {"tool": "tool_name", "arguments": {...}}
 	pattern := regexp.MustCompile(`\{"tool"\s*:\s*"[^"]+"\s*,\s*"arguments"\s*:\s*\{[^}]*\}\}`)
+	
+	// Pattern to match structured response format
+	// Matches: {"response_type": "...", "text": ..., "tool_calls": [...]}
+	structuredPattern := regexp.MustCompile(`\{\s*"response_type"\s*:\s*"[^"]+"[^}]+\}`)
 
 	return &TextToolCallParser{
-		toolCallPattern: pattern,
+		toolCallPattern:   pattern,
+		structuredPattern: structuredPattern,
 	}
 }
 
 // ParseToolCalls extracts tool calls from text content
 func (p *TextToolCallParser) ParseToolCalls(content string) ([]ai.ToolCall, error) {
+	// First, try to parse as structured format
+	if p.structuredPattern.MatchString(content) {
+		// Try to parse the entire content as structured JSON
+		var structuredResp struct {
+			ResponseType string `json:"response_type"`
+			Text         *string `json:"text"`
+			ToolCalls    []struct {
+				Tool      string                 `json:"tool"`
+				Arguments map[string]interface{} `json:"arguments"`
+			} `json:"tool_calls"`
+		}
+		
+		if err := json.Unmarshal([]byte(content), &structuredResp); err == nil {
+			// Successfully parsed structured format
+			if structuredResp.ResponseType == "tool_call" || structuredResp.ResponseType == "both" {
+				var toolCalls []ai.ToolCall
+				for i, tc := range structuredResp.ToolCalls {
+					argsJSON, err := json.Marshal(tc.Arguments)
+					if err != nil {
+						continue
+					}
+					
+					toolCall := ai.ToolCall{
+						ID:    fmt.Sprintf("call_%d", i+1),
+						Type:  "function",
+						Index: i,
+						Function: ai.FunctionCall{
+							Name:      tc.Tool,
+							Arguments: string(argsJSON),
+						},
+					}
+					toolCalls = append(toolCalls, toolCall)
+				}
+				return toolCalls, nil
+			}
+		}
+	}
+	
+	// Fall back to old format parsing
 	matches := p.toolCallPattern.FindAllString(content, -1)
 	if len(matches) == 0 {
 		return nil, nil // No tool calls found
@@ -73,6 +119,22 @@ func (p *TextToolCallParser) ParseToolCalls(content string) ([]ai.ToolCall, erro
 
 // ExtractContentWithoutToolCalls removes tool call JSON from content and returns clean text
 func (p *TextToolCallParser) ExtractContentWithoutToolCalls(content string) string {
+	// First check if this is a structured response
+	if p.structuredPattern.MatchString(content) {
+		// Try to parse and extract text field
+		var structuredResp struct {
+			ResponseType string  `json:"response_type"`
+			Text         *string `json:"text"`
+		}
+		
+		if err := json.Unmarshal([]byte(content), &structuredResp); err == nil {
+			if structuredResp.Text != nil {
+				return *structuredResp.Text
+			}
+			return "" // Structured response with no text
+		}
+	}
+	
 	// Remove tool call JSON patterns from the content
 	cleanContent := p.toolCallPattern.ReplaceAllString(content, "")
 
@@ -116,7 +178,52 @@ func (p *TextToolCallParser) SplitMessages(content string) []string {
 // ParseMessage processes a message that might contain both text and tool calls
 // Returns the clean text content and any tool calls found
 func (p *TextToolCallParser) ParseMessage(content string) (string, []ai.ToolCall, error) {
-	// First, check if the message contains the separator
+	// First check if this is a structured response
+	if p.structuredPattern.MatchString(content) {
+		// Try to parse as structured format
+		var structuredResp struct {
+			ResponseType string  `json:"response_type"`
+			Text         *string `json:"text"`
+			ToolCalls    []struct {
+				Tool      string                 `json:"tool"`
+				Arguments map[string]interface{} `json:"arguments"`
+			} `json:"tool_calls"`
+		}
+		
+		if err := json.Unmarshal([]byte(content), &structuredResp); err == nil {
+			// Successfully parsed structured format
+			var cleanText string
+			if structuredResp.Text != nil {
+				cleanText = *structuredResp.Text
+			}
+			
+			var toolCalls []ai.ToolCall
+			if structuredResp.ResponseType == "tool_call" || structuredResp.ResponseType == "both" {
+				for i, tc := range structuredResp.ToolCalls {
+					argsJSON, err := json.Marshal(tc.Arguments)
+					if err != nil {
+						continue
+					}
+					
+					toolCall := ai.ToolCall{
+						ID:    fmt.Sprintf("call_%d", i+1),
+						Type:  "function",
+						Index: i,
+						Function: ai.FunctionCall{
+							Name:      tc.Tool,
+							Arguments: string(argsJSON),
+						},
+					}
+					toolCalls = append(toolCalls, toolCall)
+				}
+			}
+			
+			return cleanText, toolCalls, nil
+		}
+	}
+	
+	// Fall back to old parsing logic
+	// Check if the message contains the separator
 	messages := p.SplitMessages(content)
 
 	var allToolCalls []ai.ToolCall

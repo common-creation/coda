@@ -2,6 +2,7 @@
 package ai
 
 import (
+	"encoding/json"
 	"time"
 )
 
@@ -282,8 +283,22 @@ type FunctionCall struct {
 
 // ResponseFormat specifies the format of the response.
 type ResponseFormat struct {
-	// Response type: "text" or "json_object"
+	// Response type: "text", "json_object", or "json_schema"
 	Type string `json:"type"`
+	// JSONSchema for structured outputs (when Type is "json_schema")
+	JSONSchema *JSONSchema `json:"json_schema,omitempty"`
+}
+
+// JSONSchema defines the structure for Structured Outputs
+type JSONSchema struct {
+	// Name of the schema (required for Structured Outputs)
+	Name string `json:"name"`
+	// Description of the schema (optional)
+	Description string `json:"description,omitempty"`
+	// The JSON Schema definition
+	Schema json.RawMessage `json:"schema"`
+	// Strict mode ensures the model always follows the schema
+	Strict bool `json:"strict"`
 }
 
 // StreamReader defines the interface for reading streaming responses.

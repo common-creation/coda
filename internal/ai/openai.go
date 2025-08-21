@@ -248,6 +248,16 @@ func (c *OpenAIClient) convertChatRequest(req ChatRequest) (openai.ChatCompletio
 		openaiReq.ResponseFormat = &openai.ChatCompletionResponseFormat{
 			Type: openai.ChatCompletionResponseFormatType(req.ResponseFormat.Type),
 		}
+		
+		// Add JSON Schema if provided (for Structured Outputs)
+		if req.ResponseFormat.Type == "json_schema" && req.ResponseFormat.JSONSchema != nil {
+			openaiReq.ResponseFormat.JSONSchema = &openai.ChatCompletionResponseFormatJSONSchema{
+				Name:        req.ResponseFormat.JSONSchema.Name,
+				Description: req.ResponseFormat.JSONSchema.Description,
+				Schema:      req.ResponseFormat.JSONSchema.Schema,
+				Strict:      req.ResponseFormat.JSONSchema.Strict,
+			}
+		}
 	}
 
 	return openaiReq, nil
