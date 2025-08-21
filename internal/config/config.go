@@ -49,6 +49,10 @@ type AIConfig struct {
 
 	// Azure specific settings
 	Azure AzureConfig `yaml:"azure" json:"azure"`
+	
+	// Reasoning effort for GPT-5 models (optional)
+	// Valid values: "minimal", "low", "medium", "high"
+	ReasoningEffort *string `yaml:"reasoning_effort,omitempty" json:"reasoning_effort,omitempty"`
 }
 
 // OpenAIConfig contains OpenAI specific settings
@@ -236,6 +240,19 @@ func (ai *AIConfig) Validate() error {
 		}
 		if ai.Azure.DeploymentName == "" {
 			return errors.New("Azure deployment name is required")
+		}
+	}
+	
+	// Validate reasoning effort if specified
+	if ai.ReasoningEffort != nil {
+		validEfforts := map[string]bool{
+			"minimal": true,
+			"low":     true,
+			"medium":  true,
+			"high":    true,
+		}
+		if !validEfforts[*ai.ReasoningEffort] {
+			return fmt.Errorf("invalid reasoning_effort: %s (must be 'minimal', 'low', 'medium', or 'high')", *ai.ReasoningEffort)
 		}
 	}
 

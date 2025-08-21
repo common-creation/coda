@@ -133,11 +133,12 @@ func (h *ChatHandler) HandleMessageWithResponse(ctx context.Context, input strin
 
 	// Create chat request with streaming enabled (no tools - using text-based tool calling)
 	req := ai.ChatRequest{
-		Model:       h.config.AI.Model,
-		Messages:    messages,
-		Temperature: &h.config.AI.Temperature,
-		MaxTokens:   &h.config.AI.MaxTokens,
-		Stream:      true, // Enable streaming
+		Model:           h.config.AI.Model,
+		Messages:        messages,
+		Temperature:     &h.config.AI.Temperature,
+		MaxTokens:       &h.config.AI.MaxTokens,
+		Stream:          true, // Enable streaming
+		ReasoningEffort: h.config.AI.ReasoningEffort,
 	}
 
 	// Send request to AI with streaming
@@ -492,11 +493,12 @@ func (h *ChatHandler) ContinueConversation(ctx context.Context, tokenCallback fu
 
 	// Create chat request with streaming enabled (no tools - using text-based tool calling)
 	req := ai.ChatRequest{
-		Model:       h.config.AI.Model,
-		Messages:    messages,
-		Temperature: &h.config.AI.Temperature,
-		MaxTokens:   &h.config.AI.MaxTokens,
-		Stream:      true, // Enable streaming
+		Model:           h.config.AI.Model,
+		Messages:        messages,
+		Temperature:     &h.config.AI.Temperature,
+		MaxTokens:       &h.config.AI.MaxTokens,
+		Stream:          true, // Enable streaming
+		ReasoningEffort: h.config.AI.ReasoningEffort,
 	}
 
 	// Send request to AI with streaming

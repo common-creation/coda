@@ -141,6 +141,25 @@ The system loads configuration from multiple sources (in order):
 - **Session Settings**: History management, persistence
 - **Security Settings**: Path restrictions, dangerous patterns
 
+### GPT-5 Support
+
+CODA now supports GPT-5 models with reasoning effort configuration:
+
+```yaml
+ai:
+  model: gpt-5
+  # Reasoning effort for GPT-5 models (optional)
+  # Valid values: "minimal", "low", "medium", "high"
+  reasoning_effort: "minimal"
+```
+
+- Use `reasoning_effort: "minimal"` for fastest responses
+- Higher values (`"low"`, `"medium"`, `"high"`) provide more detailed reasoning
+- If `reasoning_effort` is not specified or commented out, the SDK default will be used
+- This setting only applies to GPT-5 models
+
+Note: Full GPT-5 support depends on the go-openai SDK. Currently, the reasoning effort is prepared but may not be sent to the API until SDK support is complete.
+
 ## Project-Specific Context
 
 ### System Prompts

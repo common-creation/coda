@@ -19,6 +19,7 @@ import (
 	"github.com/common-creation/coda/internal/config"
 	"github.com/common-creation/coda/internal/errors"
 	"github.com/common-creation/coda/internal/styles"
+	"github.com/common-creation/coda/internal/tokenizer"
 	"github.com/common-creation/coda/internal/tools"
 	"github.com/common-creation/coda/internal/ui/components"
 )
@@ -1308,9 +1309,9 @@ func (m Model) renderLoadingMessage() string {
 		formatDuration(elapsed))
 
 	// Add token information if available
-	if m.userInputTokens > 0 {
+	if m.estimatedTokens > 0 {
 		/// DO NOT CHANGE '≈' TO '~'
-		loadingMsg += fmt.Sprintf(" | Send: ≈%d tokens", m.userInputTokens)
+		loadingMsg += fmt.Sprintf(" | Send: ≈%d tokens", m.estimatedTokens)
 	}
 
 	// Add streaming token count if receiving
@@ -1478,7 +1479,7 @@ func (m Model) renderStatus() string {
 // renderHelpLine renders the help line
 func (m Model) renderHelpLine() string {
 	if m.currentMode == ModeScroll {
-		return " Arrows:scroll, Home/End:top/bottom, Esc/Ctrl+Y:return to input"
+		return " Arrows:scroll, Home/End:top/bottom, Ctrl+Y:return to input"
 	}
 	if m.currentMode == ModePermit {
 		return " Left/Right:select, Enter:confirm, Esc:reject"
@@ -2005,6 +2006,17 @@ func (m *Model) sendToolResults(results []chat.ToolResult) tea.Cmd {
 			m.logger.Error("Failed to add tool result message", "error", err)
 		}
 
+		// Calculate tokens for tool result
+		toolResultTokens := 0
+		if m.config != nil && m.config.AI.Model != "" {
+			tokens, err := tokenizer.EstimateUserMessageTokens(toolResultText, m.config.AI.Model)
+			if err != nil {
+				m.logger.Debug("Failed to estimate tool result tokens", "error", err)
+			} else {
+				toolResultTokens = tokens
+			}
+		}
+
 		// Add to UI messages for display with brief summary
 		briefSummary := m.getToolResultSummary(result)
 		m.messages = append(m.messages, Message{
@@ -2012,7 +2024,7 @@ func (m *Model) sendToolResults(results []chat.ToolResult) tea.Cmd {
 			Content:   briefSummary,
 			Role:      "tool",
 			Timestamp: result.ExecutedAt,
-			Tokens:    0,
+			Tokens:    toolResultTokens,
 		})
 	}
 
@@ -2361,9 +2373,8 @@ func (m Model) calculateSessionTokens() int {
 		systemPrompt := m.chatHandler.GetSystemPrompt()
 		if systemPrompt != "" && m.config != nil && m.config.AI.Model != "" {
 			// Use tokenizer for accurate system prompt token count
-			systemTokens, err := EstimateUserMessageTokens(systemPrompt, m.config.AI.Model)
+			systemTokens, err := tokenizer.EstimateUserMessageTokens(systemPrompt, m.config.AI.Model)
 			if err != nil {
-				panic(err)
 				// Fallback to rough estimate on error
 				systemTokens = 800
 			}

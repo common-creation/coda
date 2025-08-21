@@ -21,6 +21,8 @@ const (
 	ModelGPT4Vision    = "gpt-4-vision-preview"
 	ModelGPT35Turbo    = "gpt-3.5-turbo"
 	ModelGPT35Turbo16k = "gpt-3.5-turbo-16k"
+	ModelGPT5          = "gpt-5"
+	ModelGPT5Turbo     = "gpt-5-turbo"
 )
 
 // Default values for various parameters.
@@ -131,6 +133,10 @@ type ChatRequest struct {
 
 	// Additional metadata
 	Metadata map[string]string `json:"metadata,omitempty"`
+	
+	// Reasoning effort for GPT-5 models (optional)
+	// Valid values: "minimal", "low", "medium", "high"
+	ReasoningEffort *string `json:"reasoning_effort,omitempty"`
 }
 
 // ChatResponse represents a chat completion response.

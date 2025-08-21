@@ -184,6 +184,21 @@ func (c *OpenAIClient) convertChatRequest(req ChatRequest) (openai.ChatCompletio
 			openaiReq.Model = ModelGPT4Turbo
 		}
 	}
+	
+	// Handle GPT-5 specific settings
+	if strings.HasPrefix(openaiReq.Model, "gpt-5") && req.ReasoningEffort != nil {
+		// TODO: When go-openai library supports GPT-5 reasoning effort,
+		// add the reasoning effort parameter to the request.
+		// For now, we'll prepare the structure but cannot send it due to SDK limitations.
+		//
+		// Expected future implementation:
+		// openaiReq.Reasoning = &openai.ReasoningConfig{
+		//     Effort: *req.ReasoningEffort,
+		// }
+		//
+		// Note: GPT-5 uses a different API endpoint (responses.create) instead of
+		// chat.completions, which may require a different client method when supported.
+	}
 
 	// Convert messages
 	for i, msg := range req.Messages {

@@ -216,6 +216,22 @@ func (c *AzureClient) convertChatRequest(req ChatRequest) (openai.ChatCompletion
 		Messages: make([]openai.ChatCompletionMessage, len(req.Messages)),
 		Stream:   req.Stream,
 	}
+	
+	// Handle GPT-5 specific settings
+	if (strings.Contains(strings.ToLower(c.deploymentName), "gpt-5") || 
+		strings.HasPrefix(req.Model, "gpt-5")) && req.ReasoningEffort != nil {
+		// TODO: When go-openai library supports GPT-5 reasoning effort,
+		// add the reasoning effort parameter to the request.
+		// For now, we'll prepare the structure but cannot send it due to SDK limitations.
+		//
+		// Expected future implementation:
+		// azureReq.Reasoning = &openai.ReasoningConfig{
+		//     Effort: *req.ReasoningEffort,
+		// }
+		//
+		// Note: GPT-5 uses a different API endpoint (responses.create) instead of
+		// chat.completions, which may require a different client method when supported.
+	}
 
 	// Convert messages
 	for i, msg := range req.Messages {
