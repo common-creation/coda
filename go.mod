@@ -5,18 +5,18 @@ go 1.23.0
 toolchain go1.24.5
 
 require (
-	github.com/charmbracelet/bubbles v0.20.0
+	github.com/charmbracelet/bubbles v0.21.0
 	github.com/charmbracelet/bubbletea v1.3.6
 	github.com/charmbracelet/lipgloss v1.1.0
-	github.com/charmbracelet/log v0.3.1
+	github.com/charmbracelet/log v0.4.2
 	github.com/google/uuid v1.6.0
-	github.com/modelcontextprotocol/go-sdk v0.2.0
+	github.com/modelcontextprotocol/go-sdk v0.3.1
 	github.com/muesli/termenv v0.16.0
-	github.com/sashabaranov/go-openai v1.40.5
+	github.com/sashabaranov/go-openai v1.41.1
 	github.com/spf13/cobra v1.9.1
 	github.com/spf13/viper v1.20.1
-	github.com/stretchr/testify v1.10.0
-	github.com/tiktoken-go/tokenizer v0.6.2
+	github.com/stretchr/testify v1.11.1
+	github.com/tiktoken-go/tokenizer v0.7.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 
@@ -34,6 +34,7 @@ require (
 	github.com/fsnotify/fsnotify v1.8.0 // indirect
 	github.com/go-logfmt/logfmt v0.6.0 // indirect
 	github.com/go-viper/mapstructure/v2 v2.2.1 // indirect
+	github.com/google/jsonschema-go v0.2.1-0.20250825175020-748c325cec76 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/lucasb-eyer/go-colorful v1.2.0 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
