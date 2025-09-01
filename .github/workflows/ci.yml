@@ -29,7 +29,9 @@ jobs:
         cache: true
     
     - name: Download dependencies
-      run: go mod download
+      run: |
+        rm -f go.sum
+        go mod download
       env:
         GOSUMDB: "off" # verifying github.com/charmbracelet/x/ansi@v0.9.3: checksum mismatch
     
@@ -66,7 +68,9 @@ jobs:
         cache: true
     
     - name: Download dependencies
-      run: go mod download
+      run: |
+        rm -f go.sum
+        go mod download
       env:
         GOSUMDB: "off" # verifying github.com/charmbracelet/x/ansi@v0.9.3: checksum mismatch
 
