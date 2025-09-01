@@ -210,31 +210,27 @@ func TestMCPRegistryUnregisterServerToolsNotRegistered(t *testing.T) {
 }
 
 func TestMCPRegistryHandleServerStateChange(t *testing.T) {
-	toolManager := NewMockToolManager()
-	mcpManager := &MockMCPManager{}
-	registry := NewMCPRegistry(toolManager, mcpManager, nil)
-
 	serverName := "state-change-server"
 
 	tests := []struct {
 		name     string
 		oldState State
 		newState State
-		setup    func()
-		verify   func()
+		setup    func(toolManager *MockToolManager, mcpManager *MockMCPManager, registry *MCPRegistry)
+		verify   func(t *testing.T, registry *MCPRegistry)
 	}{
 		{
 			name:     "server starts running",
 			oldState: StateStarting,
 			newState: StateRunning,
-			setup: func() {
+			setup: func(toolManager *MockToolManager, mcpManager *MockMCPManager, registry *MCPRegistry) {
 				mcpManager.On("GetServerStatus", serverName).Return(ServerStatus{
 					Name:  serverName,
 					State: StateRunning,
 				})
 				mcpManager.On("ListTools").Return([]ToolInfo{}, nil)
 			},
-			verify: func() {
+			verify: func(t *testing.T, registry *MCPRegistry) {
 				// Should attempt to register tools (even if empty)
 			},
 		},
@@ -242,12 +238,12 @@ func TestMCPRegistryHandleServerStateChange(t *testing.T) {
 			name:     "server stops",
 			oldState: StateRunning,
 			newState: StateStopped,
-			setup: func() {
+			setup: func(toolManager *MockToolManager, mcpManager *MockMCPManager, registry *MCPRegistry) {
 				// Pre-populate some tools
 				registry.registeredTools[serverName] = []string{"mcp_state-change-server_tool1"}
 				toolManager.On("Unregister", "mcp_state-change-server_tool1").Return(nil)
 			},
-			verify: func() {
+			verify: func(t *testing.T, registry *MCPRegistry) {
 				// Should unregister tools
 				registeredTools := registry.GetRegisteredMCPTools()
 				assert.NotContains(t, registeredTools, serverName)
@@ -257,12 +253,12 @@ func TestMCPRegistryHandleServerStateChange(t *testing.T) {
 			name:     "server errors",
 			oldState: StateRunning,
 			newState: StateError,
-			setup: func() {
+			setup: func(toolManager *MockToolManager, mcpManager *MockMCPManager, registry *MCPRegistry) {
 				// Pre-populate some tools
 				registry.registeredTools[serverName] = []string{"mcp_state-change-server_tool1"}
 				toolManager.On("Unregister", "mcp_state-change-server_tool1").Return(nil)
 			},
-			verify: func() {
+			verify: func(t *testing.T, registry *MCPRegistry) {
 				// Should unregister tools
 				registeredTools := registry.GetRegisteredMCPTools()
 				assert.NotContains(t, registeredTools, serverName)
@@ -272,11 +268,12 @@ func TestMCPRegistryHandleServerStateChange(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Clear previous mock calls
-			mcpManager.ExpectedCalls = nil
-			toolManager.ExpectedCalls = nil
+			// Create fresh mocks and registry for each test
+			toolManager := NewMockToolManager()
+			mcpManager := &MockMCPManager{}
+			registry := NewMCPRegistry(toolManager, mcpManager, nil)
 
-			tt.setup()
+			tt.setup(toolManager, mcpManager, registry)
 
 			// Handle state change
 			registry.HandleServerStateChange(serverName, tt.oldState, tt.newState)
@@ -284,7 +281,7 @@ func TestMCPRegistryHandleServerStateChange(t *testing.T) {
 			// Wait for async operations
 			time.Sleep(100 * time.Millisecond)
 
-			tt.verify()
+			tt.verify(t, registry)
 		})
 	}
 }
