@@ -155,7 +155,9 @@ func getDefaultSearchPaths() []string {
 		paths = append(paths, envPath)
 	}
 
-	// Current directory - prioritized first
+	// Current directory paths
+	paths = append(paths, ".coda/config.yaml")
+	paths = append(paths, ".coda.yaml")
 	paths = append(paths, "config.yaml")
 
 	// User config directory
@@ -323,6 +325,9 @@ func applyEnvironmentOverrides(cfg *Config) {
 	// Logging overrides - basic environment variable support
 	if logLevel := os.Getenv("CODA_LOG_LEVEL"); logLevel != "" {
 		cfg.Logging.Level = logLevel
+	}
+	if logFormat := os.Getenv("CODA_LOG_FORMAT"); logFormat != "" {
+		cfg.Logging.Format = logFormat
 	}
 	// Environment can override to simple file logging
 	if logFile := os.Getenv("CODA_LOG_FILE"); logFile != "" {

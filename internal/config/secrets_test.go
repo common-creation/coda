@@ -175,6 +175,9 @@ func TestGetAPIKeyFromEnv(t *testing.T) {
 	})
 
 	t.Run("Provider-specific CODA env var", func(t *testing.T) {
+		// Clear generic CODA_API_KEY to test provider-specific fallback
+		os.Unsetenv("CODA_API_KEY")
+		
 		testKey := "coda-custom-key"
 		os.Setenv("CODA_custom_API_KEY", testKey)
 

@@ -1,3 +1,6 @@
+//go:build integration
+// +build integration
+
 package scenarios
 
 import (
@@ -94,7 +97,7 @@ func TestToolApprovalSystem(t *testing.T) {
 		// Wait for approval UI to appear
 		err := helper.WaitForCondition(func() bool {
 			view := helper.GetModel().View()
-			return contains(view, "Tool Approval") || contains(view, "approve") || contains(view, "y/n")
+			return toolContains(view, "Tool Approval") || toolContains(view, "approve") || toolContains(view, "y/n")
 		}, 10*time.Second, "tool approval UI to appear")
 
 		require.NoError(t, err, "Tool approval UI should appear")
@@ -227,7 +230,7 @@ func TestMultipleToolExecution(t *testing.T) {
 
 			// Check if approval is needed
 			view := helper.GetModel().View()
-			if contains(view, "approve") || contains(view, "y/n") {
+			if toolContains(view, "approve") || toolContains(view, "y/n") {
 				helper.SendKeyMsg("y")
 			}
 		}
@@ -340,7 +343,7 @@ func TestToolApprovalUI(t *testing.T) {
 		// Wait for approval UI
 		err := helper.WaitForCondition(func() bool {
 			view := helper.GetModel().View()
-			return contains(view, "read_file") && contains(view, "important.txt")
+			return toolContains(view, "read_file") && toolContains(view, "important.txt")
 		}, 10*time.Second, "approval UI with tool details")
 
 		require.NoError(t, err)
@@ -524,7 +527,7 @@ func TestToolExecutionScenarios(t *testing.T) {
 		for _, approval := range approvals {
 			time.Sleep(1 * time.Second)
 			view := helper.GetModel().View()
-			if contains(view, "approve") || contains(view, "y/n") {
+			if toolContains(view, "approve") || toolContains(view, "y/n") {
 				helper.SendKeyMsg(approval)
 			}
 		}
@@ -604,13 +607,13 @@ func TestToolSecurityFeatures(t *testing.T) {
 }
 
 // Helper function to check if a string contains a substring (case-insensitive)
-func contains(s, substr string) bool {
+func toolContains(s, substr string) bool {
 	return len(s) >= len(substr) && (s == substr ||
 		len(s) > len(substr) &&
-			(containsAt(s, substr, 0) || contains(s[1:], substr)))
+			(toolContainsAt(s, substr, 0) || toolContains(s[1:], substr)))
 }
 
-func containsAt(s, substr string, index int) bool {
+func toolContainsAt(s, substr string, index int) bool {
 	if index+len(substr) > len(s) {
 		return false
 	}

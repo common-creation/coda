@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
-	"time"
 )
 
 func TestLogger_BasicLogging(t *testing.T) {
@@ -18,12 +17,12 @@ func TestLogger_BasicLogging(t *testing.T) {
 
 	logger.Info("test message")
 
-	output := buf.String()
-	if !strings.Contains(output, "test message") {
-		t.Errorf("Expected log to contain 'test message', got: %s", output)
+	logOutput := buf.String()
+	if !strings.Contains(logOutput, "test message") {
+		t.Errorf("Expected log to contain 'test message', got: %s", logOutput)
 	}
-	if !strings.Contains(output, "[INFO]") {
-		t.Errorf("Expected log to contain '[INFO]', got: %s", output)
+	if !strings.Contains(logOutput, "[INFO]") {
+		t.Errorf("Expected log to contain '[INFO]', got: %s", logOutput)
 	}
 }
 
@@ -39,12 +38,12 @@ func TestLogger_WithFields(t *testing.T) {
 		"action":  "test",
 	})
 
-	output := buf.String()
-	if !strings.Contains(output, "user_id=123") {
-		t.Errorf("Expected log to contain field 'user_id=123', got: %s", output)
+	logOutput := buf.String()
+	if !strings.Contains(logOutput, "user_id=123") {
+		t.Errorf("Expected log to contain field 'user_id=123', got: %s", logOutput)
 	}
-	if !strings.Contains(output, "action=test") {
-		t.Errorf("Expected log to contain field 'action=test', got: %s", output)
+	if !strings.Contains(logOutput, "action=test") {
+		t.Errorf("Expected log to contain field 'action=test', got: %s", logOutput)
 	}
 }
 
@@ -59,15 +58,15 @@ func TestLogger_LevelFiltering(t *testing.T) {
 	logger.Info("info message")
 	logger.Warn("warn message")
 
-	output := buf.String()
-	if strings.Contains(output, "debug message") {
-		t.Errorf("Debug message should not appear with WARN level, got: %s", output)
+	logOutput := buf.String()
+	if strings.Contains(logOutput, "debug message") {
+		t.Errorf("Debug message should not appear with WARN level, got: %s", logOutput)
 	}
-	if strings.Contains(output, "info message") {
-		t.Errorf("Info message should not appear with WARN level, got: %s", output)
+	if strings.Contains(logOutput, "info message") {
+		t.Errorf("Info message should not appear with WARN level, got: %s", logOutput)
 	}
-	if !strings.Contains(output, "warn message") {
-		t.Errorf("Warn message should appear with WARN level, got: %s", output)
+	if !strings.Contains(logOutput, "warn message") {
+		t.Errorf("Warn message should appear with WARN level, got: %s", logOutput)
 	}
 }
 
@@ -81,9 +80,9 @@ func TestLogger_WithMethod(t *testing.T) {
 	contextLogger := logger.With(Fields{"component": "test"})
 	contextLogger.Info("test message")
 
-	output := buf.String()
-	if !strings.Contains(output, "component=test") {
-		t.Errorf("Expected log to contain field 'component=test', got: %s", output)
+	logOutput := buf.String()
+	if !strings.Contains(logOutput, "component=test") {
+		t.Errorf("Expected log to contain field 'component=test', got: %s", logOutput)
 	}
 }
 
@@ -281,8 +280,8 @@ func TestLoggerConcurrency(t *testing.T) {
 		<-done
 	}
 
-	output := buf.String()
-	lines := strings.Split(strings.TrimSpace(output), "\n")
+	logOutput := buf.String()
+	lines := strings.Split(strings.TrimSpace(logOutput), "\n")
 
 	if len(lines) != 10 {
 		t.Errorf("Expected 10 log lines, got: %d", len(lines))

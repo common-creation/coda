@@ -148,6 +148,34 @@ func (m *MockAIClient) GetCallHistory() []ai.ChatRequest {
 	return append([]ai.ChatRequest(nil), m.callHistory...)
 }
 
+// ListModels implements ai.Client interface
+func (m *MockAIClient) ListModels(ctx context.Context) ([]ai.Model, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	
+	if m.simulateError {
+		return nil, fmt.Errorf(m.errorMessage)
+	}
+	
+	// Return mock models
+	return []ai.Model{
+		{ID: "gpt-4"},
+		{ID: "gpt-3.5-turbo"},
+	}, nil
+}
+
+// Ping implements ai.Client interface
+func (m *MockAIClient) Ping(ctx context.Context) error {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	
+	if m.simulateError {
+		return fmt.Errorf(m.errorMessage)
+	}
+	
+	return nil
+}
+
 // ChatCompletion implements ai.Client interface
 func (m *MockAIClient) ChatCompletion(ctx context.Context, req ai.ChatRequest) (*ai.ChatResponse, error) {
 	m.mu.Lock()
@@ -223,14 +251,14 @@ func (m *MockAIClient) ChatCompletionStream(ctx context.Context, req ai.ChatRequ
 type MockChatHandler struct {
 	mu          sync.RWMutex
 	aiClient    ai.Client
-	toolManager tools.Manager
+	toolManager *tools.Manager
 	sessions    map[string]*MockSession
 	responses   []string
 	callHistory []string
 }
 
 // NewMockChatHandler creates a new mock chat handler
-func NewMockChatHandler(aiClient ai.Client, toolManager tools.Manager) *MockChatHandler {
+func NewMockChatHandler(aiClient ai.Client, toolManager *tools.Manager) *MockChatHandler {
 	return &MockChatHandler{
 		aiClient:    aiClient,
 		toolManager: toolManager,

@@ -37,7 +37,13 @@ func NewTransportFactory() *DefaultTransportFactory {
 
 // CreateTransport creates the appropriate transport based on the configuration
 func (f *DefaultTransportFactory) CreateTransport(config ServerConfig) (Transport, error) {
-	switch config.Type {
+	// Default to stdio if type is empty
+	transportType := config.Type
+	if transportType == "" {
+		transportType = "stdio"
+	}
+	
+	switch transportType {
 	case "stdio":
 		return NewStdioTransport(config)
 	case "http":

@@ -209,7 +209,9 @@ func TestHTTPTransport_SendNotification(t *testing.T) {
 			}
 			json.NewEncoder(w).Encode(response)
 		} else if r.URL.Path == "/notifications/test" {
-			w.WriteHeader(http.StatusOK)
+			w.Header().Set("Content-Type", "application/json")
+			// Notifications typically don't return a response body, but we need valid JSON
+			w.Write([]byte("{}"))
 		} else {
 			http.NotFound(w, r)
 		}

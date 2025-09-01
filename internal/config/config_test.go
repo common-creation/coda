@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/common-creation/coda/internal/logging"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -98,9 +99,10 @@ func TestConfigValidate(t *testing.T) {
 					MaxFileSize: 1024,
 				},
 			},
-			Logging: LoggingConfig{
-				Level:  "info",
-				Format: "text",
+			Logging: logging.LoggingConfig{
+				Level:     "info",
+				Format:    "text",
+				Timestamp: true,
 			},
 		}
 
@@ -299,22 +301,26 @@ func TestToolsConfigValidate(t *testing.T) {
 
 func TestLoggingConfigValidate(t *testing.T) {
 	t.Run("valid config", func(t *testing.T) {
-		logging := LoggingConfig{
-			Level:  "info",
-			Format: "text",
+		cfg := logging.LoggingConfig{
+			Level:     "info",
+			Format:    "text",
+			Timestamp: true,
 		}
 
-		err := logging.Validate()
+		// LoggingConfig validation is done during ConfigureLogger
+		_, err := logging.ConfigureLogger(cfg)
 		assert.NoError(t, err)
 	})
 
 	t.Run("case insensitive level", func(t *testing.T) {
-		logging := LoggingConfig{
-			Level:  "INFO",
-			Format: "text",
+		cfg := logging.LoggingConfig{
+			Level:     "INFO",
+			Format:    "text",
+			Timestamp: true,
 		}
 
-		err := logging.Validate()
+		// LoggingConfig validation is done during ConfigureLogger
+		_, err := logging.ConfigureLogger(cfg)
 		assert.NoError(t, err)
 	})
 }

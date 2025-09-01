@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/common-creation/coda/internal/logging"
 )
@@ -183,7 +184,13 @@ func NewDefaultConfig() *Config {
 			KeyBindings:        "default",
 			InputDisplayLines:  0, // 0 = dynamic sizing up to half screen
 		},
-		Logging: logging.DefaultConfig(),
+		Logging: func() logging.LoggingConfig {
+			cfg := logging.DefaultConfig()
+			if level := os.Getenv("CODA_LOG_LEVEL"); level != "" {
+				cfg.Level = level
+			}
+			return cfg
+		}(),
 		Session: SessionConfig{
 			HistoryFile:      filepath.Join(configDir, "history.json"),
 			MaxHistory:       1000,
@@ -204,7 +211,29 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("Tools configuration error: %w", err)
 	}
 
-	// Logging validation is handled by the logging package
+	// Validate Logging configuration
+	if err := c.validateLogging(); err != nil {
+		return fmt.Errorf("Logging configuration error: %w", err)
+	}
+
+	return nil
+}
+
+// validateLogging validates the logging configuration
+func (c *Config) validateLogging() error {
+	// Validate log level
+	validLevels := []string{"debug", "info", "warn", "warning", "error", "fatal"}
+	level := strings.ToLower(c.Logging.Level)
+	if !contains(validLevels, level) {
+		return fmt.Errorf("invalid log level: %s", c.Logging.Level)
+	}
+
+	// Validate log format
+	validFormats := []string{"text", "json"}
+	format := strings.ToLower(c.Logging.Format)
+	if !contains(validFormats, format) {
+		return fmt.Errorf("invalid log format: %s", c.Logging.Format)
+	}
 
 	return nil
 }

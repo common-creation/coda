@@ -11,6 +11,8 @@ import (
 // LoggingConfig holds logging configuration
 type LoggingConfig struct {
 	Level     string          `yaml:"level" json:"level"`
+	Format    string          `yaml:"format" json:"format"`       // text or json
+	Timestamp bool            `yaml:"timestamp" json:"timestamp"` // whether to include timestamps
 	Outputs   []OutputConfig  `yaml:"outputs" json:"outputs"`
 	Sampling  SamplingConfig  `yaml:"sampling" json:"sampling"`
 	Privacy   PrivacyConfig   `yaml:"privacy" json:"privacy"`
@@ -53,7 +55,9 @@ type RotationConfig struct {
 // DefaultConfig returns a default logging configuration
 func DefaultConfig() LoggingConfig {
 	return LoggingConfig{
-		Level: "info",
+		Level:     "info",
+		Format:    "text",
+		Timestamp: true,
 		Outputs: []OutputConfig{
 			{
 				Type:   "console",

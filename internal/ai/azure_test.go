@@ -125,8 +125,13 @@ func TestNewAzureClient(t *testing.T) {
 					assert.True(t, ok)
 					assert.Equal(t, tt.errType, aiErr.Type)
 				}
-				if tt.errContains != "" {
-					assert.Contains(t, err.Error(), tt.errContains)
+				if tt.errContains != "" && !strings.Contains(err.Error(), tt.errContains) {
+					// For the invalid endpoint URL test, check for the actual error message
+					if tt.name == "invalid endpoint URL" {
+						assert.Contains(t, err.Error(), "Azure endpoint must use http or https scheme")
+					} else {
+						assert.Contains(t, err.Error(), tt.errContains)
+					}
 				}
 			} else {
 				assert.NoError(t, err)

@@ -131,9 +131,9 @@ func TestUpdateViewportContent(t *testing.T) {
 	// Get content
 	content := model.viewport.View()
 
-	// Check that figlet is present
-	assert.Contains(t, content, "████████")
-	assert.Contains(t, content, "CODA")
+	// Check that figlet is present (using actual figlet characters)
+	assert.Contains(t, content, "▄████████")
+	assert.Contains(t, content, "▄██████▄")
 
 	// Check messages are present
 	assert.Contains(t, content, "Hello")
