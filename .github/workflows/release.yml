@@ -56,6 +56,13 @@ jobs:
       id: get_version
       run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
     
+    - name: Download dependencies
+      run: |
+        rm go.sum
+        go mod tidy
+      env:
+        GOSUMDB: "off" # verifying github.com/charmbracelet/x/ansi@v0.9.3: checksum mismatch
+
     - name: Build for multiple platforms
       run: |
         # Create dist directory
