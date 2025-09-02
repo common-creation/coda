@@ -75,8 +75,12 @@ func getPlatformAPIKey(provider string) (string, error) {
 		return "", errors.New("empty credential")
 	}
 
-	key := C.GoStringN((*C.char)(unsafe.Pointer(credPtr.CredentialBlob)), C.int(credPtr.CredentialBlobSize))
-	return key, nil
+	// Convert credential blob to Go string
+	keyBytes := make([]byte, credPtr.CredentialBlobSize)
+	for i := uint32(0); i < credPtr.CredentialBlobSize; i++ {
+		keyBytes[i] = *(*byte)(unsafe.Pointer(uintptr(unsafe.Pointer(credPtr.CredentialBlob)) + uintptr(i)))
+	}
+	return string(keyBytes), nil
 }
 
 // setPlatformAPIKey stores API key in Windows Credential Manager
