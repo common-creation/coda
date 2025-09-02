@@ -2,38 +2,43 @@
 
 ![](https://i.imgur.com/stKKmbT.png)
 
+[English](README.en.md) | 日本語
+
 <div align="center">
 
-[![Go Version](https://img.shields.io/badge/go-%3E%3D1.21-blue.svg)](https://go.dev/)
+[![Go Version](https://img.shields.io/badge/go-%3E%3D1.24-blue.svg)](https://go.dev/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![CI Status](https://github.com/common-creation/coda/workflows/CI/badge.svg)](https://github.com/common-creation/coda/actions)
 
-An intelligent command-line coding assistant that helps you write, understand, and manage code through natural language interaction.
+自然言語での対話を通じて、コードの作成、理解、管理を支援するインテリジェントなコマンドラインコーディングアシスタント。
 
 </div>
 
-## Features
+## 機能
 
-- 🤖 **Multi-Model Support**: Works with OpenAI GPT and Azure OpenAI models
-- 💬 **Interactive Chat**: Natural language interface for coding tasks
-- 🛠️ **Tool Integration**: Built-in file operations (read, write, edit, search)
-- 🔒 **Security First**: Sandboxed file access with approval system
-- 📝 **Context Awareness**: Understands your project structure and dependencies
-- 🎨 **Rich Terminal UI**: Beautiful interface powered by Bubbletea (coming soon)
-- ⚡ **Streaming Responses**: Real-time output as the AI generates responses
-- 🔧 **Configurable**: Extensive configuration options via YAML/environment
+- 🤖 **マルチモデルサポート**: OpenAI GPTおよびAzure OpenAIモデルに対応
+- 💬 **インタラクティブチャット**: コーディングタスク用の自然言語インターフェース
+- 🛠️ **ツール統合**: ビルトインファイル操作（読み取り、書き込み、編集、検索 ...）
+- 🔒 **セキュリティファースト**: 意図せぬツールコールを避ける承認システム
+- 📝 **コンテキスト認識**: プロジェクト構造と依存関係を理解
+- 🎨 **リッチターミナルUI**: Bubbletea搭載の美しいインターフェース
+- 🔧 **設定可能**: YAML/環境変数による広範な設定オプション
 
-## Quick Start
+## クイックスタート
 
-### Installation
+### インストール
 
-#### Using Go
+#### リリースから
+
+https://github.com/common-creation/coda/releases/latest
+
+#### Goを使用
 
 ```bash
 go install github.com/common-creation/coda@latest
 ```
 
-#### From Source
+#### ソースから
 
 ```bash
 git clone https://github.com/common-creation/coda.git
@@ -41,112 +46,90 @@ cd coda
 make build
 ```
 
-### Configuration
+### 設定
 
-1. Initialize configuration:
+1. 設定を初期化:
 ```bash
 coda config init
 ```
 
-2. Set your API key:
-```bash
-# For OpenAI
-coda config set-api-key openai
-
-# For Azure OpenAI
-coda config set-api-key azure
-```
-
-3. (Optional) Configure settings:
-```bash
-coda config set ai.model o4-mini
-coda config set ai.temperature 1
-```
-
-### Basic Usage
-
-#### Interactive Chat Mode
+または
 
 ```bash
-# Start interactive chat
-coda chat
-
-# Use a specific model
-coda chat --model gpt-4
-
-# Continue previous session
-coda chat --continue
+coda
+# 初回起動 または APIキー未設定 の場合は設定ファイルが作成される
 ```
 
-#### Non-Interactive Mode
+2. APIキーを設定:
+```bash
+# OpenAI用
+coda config set-api-key openai [key]
+
+# Azure OpenAI用
+coda config set-api-key azure [key]
+```
+
+設定ファイルを直接編集してもかまいません。
+
+3. (オプション) 設定をカスタマイズ:
+```bash
+coda config set ai.model o4-mini # デフォルトは o3
+```
+
+### 基本的な使い方
+
+#### インタラクティブチャットモード
 
 ```bash
-# Single prompt
-coda run "Explain this code: print('Hello, World!')"
+# インタラクティブチャットを開始
+coda
 
-# Process file
-coda run --input main.go "Add comments to this Go code"
-
-# Save output
-coda run --output analysis.md "Analyze the architecture of this project"
-
-# Pipe input
-cat error.log | coda run "What's causing this error?"
+# 特定のモデルを使用
+coda --model o4-mini
 ```
 
-## Commands
+## コマンド
 
-### `coda chat`
-Start an interactive chat session with the AI assistant.
+### `coda` または `coda chat`
+AIアシスタントとのインタラクティブチャットセッションを開始します。
 
-**Options:**
-- `--model`: Specify AI model to use
-- `--no-stream`: Disable streaming responses
-- `--continue`: Continue last session
-- `--no-tools`: Disable tool execution
-
-### `coda run`
-Execute a single prompt in non-interactive mode.
-
-**Options:**
-- `--input, -i`: Read input from file
-- `--output, -o`: Save output to file
-- `--model, -m`: Specify AI model
+**オプション:**
+- `--model`: 使用するAIモデルを指定
 
 ### `coda config`
-Manage CODA configuration.
+CODA設定を管理します。
 
-**Subcommands:**
-- `show`: Display current configuration
-- `set KEY VALUE`: Set a configuration value
-- `get KEY`: Get a specific value
-- `init`: Initialize configuration file
-- `validate`: Check configuration validity
-- `set-api-key`: Securely store API keys
+**サブコマンド:**
+- `show`: 現在の設定を表示
+- `set KEY VALUE`: 設定値を設定
+- `get KEY`: 特定の値を取得
+- `init`: 設定ファイルを初期化
+- `validate`: 設定の妥当性をチェック
+- `set-api-key PROVIDER`: APIキーをhistoryに残さずに設定
 
 ### `coda version`
-Display version information.
+バージョン情報を表示します。
 
-**Options:**
-- `--verbose, -v`: Show detailed version info
-- `--json`: Output as JSON
+**オプション:**
+- `--verbose, -v`: 詳細なバージョン情報を表示
+- `--json`: JSON形式で出力
 
-## Configuration
+## 設定
 
-CODA looks for configuration in these locations (in order):
-1. Command line flag: `--config`
-2. Environment variable: `CODA_CONFIG`
+CODAは以下の場所から設定を読み込みます（順番に）:
+1. コマンドラインフラグ: `--config`
+2. 環境変数: `CODA_CONFIG`
 3. `$HOME/.coda/config.yaml`
 4. `./config.yaml`
 
-### Configuration File Example
+### 設定ファイルの例
 
 ```yaml
 ai:
-  provider: openai  # or "azure"
-  model: gpt-4
-  temperature: 0.7
-  max_tokens: 2048
+  provider: openai  # または "azure"
+  model: o3
+  temperature: 1
+  max_tokens: 0 # 0を指定すると制限しない
 
 tools:
   enabled: true
@@ -167,182 +150,141 @@ logging:
   file: ~/.coda/coda.log
 ```
 
-### Environment Variables
+### 環境変数
 
-All configuration options can be set via environment variables:
+すべての設定オプションは環境変数で設定できます:
 
 ```bash
 export CODA_AI_PROVIDER=openai
-export CODA_AI_MODEL=gpt-4
+export CODA_AI_MODEL=o4-mini
 export CODA_AI_API_KEY=sk-...
 ```
 
-## Workspace Configuration
+## ワークスペース設定
 
-CODA supports project-specific configuration through workspace files:
+CODAはワークスペースファイルを通じてプロジェクト固有の設定をサポートします:
 
-### `.coda/CODA.md` or `.claude/CLAUDE.md`
+### `.coda/CODA.md` または `.claude/CLAUDE.md` (実験的)
 
 ```markdown
-# Project Instructions
+# プロジェクト指示
 
-This is a React TypeScript project using Next.js 14.
+これはNext.js 14を使用したReact TypeScriptプロジェクトです。
 
-## Rules
-- Always use TypeScript strict mode
-- Prefer functional components with hooks
-- Follow the project's ESLint configuration
+## ルール
+- 常にTypeScript strictモードを使用
+- フックを使った関数コンポーネントを優先
+- プロジェクトのESLint設定に従う
 
-## Context
-- Main API endpoint: /api/v1
-- Database: PostgreSQL with Prisma ORM
-- Authentication: NextAuth.js
+## コンテキスト
+- メインAPIエンドポイント: /api/v1
+- データベース: Prisma ORMを使用したPostgreSQL
+- 認証: NextAuth.js
 ```
 
-## Available Tools
+## 利用可能なツール
 
-CODA includes several built-in tools for file operations:
+CODAにはファイル操作用のビルトインツールがいくつか含まれています。
+以下はその代表例です:
 
-- **read_file**: Read contents of a file
-- **write_file**: Create or overwrite a file
-- **edit_file**: Modify specific parts of a file
-- **list_files**: List directory contents
-- **search_files**: Search for files by content or name
+- **read_file**: ファイルの内容を読み取る
+- **write_file**: ファイルを作成または上書き
+- **edit_file**: ファイルの特定部分を変更
+- **list_files**: ディレクトリの内容を一覧表示
+- **search_files**: 内容や名前でファイルを検索
 
-All tool operations require user approval by default for security.
+セキュリティのため、すべてのツール操作はデフォルトでユーザーの承認が必要です。
 
-## Security
+## セキュリティ
 
-CODA implements several security measures:
+CODAは複数のセキュリティ対策を実装しています:
 
-- **Sandboxed File Access**: Operations are restricted to allowed paths
-- **Approval System**: Dangerous operations require explicit user consent
-- **API Key Encryption**: Credentials are stored securely
-- **Path Validation**: Prevents directory traversal attacks
+- **制限されたファイルアクセス**: 操作は許可されたパスに制限
+- **承認システム**: ツール呼び出しには明示的なユーザーの同意が必要
+- **パス検証**: ディレクトリトラバーサル攻撃を防止
 
-## Development
+## 開発
 
-### Prerequisites
+### 前提条件
 
-- Go 1.21 or higher
-- Make (optional, for using Makefile)
+- Go 1.24以上
 
-### Building
-
-```bash
-# Build for current platform
-make build
-
-# Build for all platforms
-make build-all
-
-# Run tests
-make test
-
-# Run linter
-make lint
-```
-
-### Project Structure
+### プロジェクト構造
 
 ```
 coda/
-├── cmd/           # CLI commands
-├── internal/      # Internal packages
-│   ├── ai/       # AI client implementations
-│   ├── chat/     # Chat handling logic
-│   ├── config/   # Configuration management
-│   ├── security/ # Security validation
-│   ├── tools/    # Tool implementations
-│   └── ui/       # Terminal UI (Bubbletea)
-├── docs/         # Documentation
-└── scripts/      # Build and utility scripts
+├── cmd/           # CLIコマンド
+├── internal/      # 内部パッケージ
+│   ├── ai/       # AIクライアント実装
+│   ├── chat/     # チャット処理ロジック
+│   ├── config/   # 設定管理
+│   ├── security/ # セキュリティ検証
+│   ├── tools/    # ツール実装
+│   └── ui/       # ターミナルUI (Bubbletea)
+├── docs/         # ドキュメント
+├── scripts/      # ビルドおよびユーティリティスクリプト
+└── tests/        # テスト
 ```
 
-## Contributing
+### 開発ワークフロー
 
-Contributions are welcome! Please read our [Contributing Guide](CONTRIBUTING.md) for details on our code of conduct and the process for submitting pull requests.
+1. リポジトリをフォーク
+2. 機能ブランチを作成 (`git checkout -b feature/amazing-feature`)
+3. 変更をコミット (`git commit -m 'Add some amazing feature'`)
+4. ブランチにプッシュ (`git push origin feature/amazing-feature`)
+5. プルリクエストを開く
 
-### Development Workflow
+## トラブルシューティング
 
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add some amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+### よくある問題
 
-## Troubleshooting
-
-### Common Issues
-
-**API Key Not Found**
+**APIキーが見つからない**
 ```bash
-# Check if API key is set
+# APIキーが設定されているか確認
 coda config get ai.api_key
 
-# Re-set the API key
+# APIキーを再設定
 coda config set-api-key openai
 ```
 
-**Permission Denied for File Operations**
-- Check your `allowed_paths` configuration
-- Ensure you have proper file system permissions
+**ファイル操作の権限拒否**
+- `allowed_paths`設定を確認
+- 適切なファイルシステム権限があることを確認
 
-**Connection Timeout**
-- Verify your internet connection
-- Check if you're behind a proxy
-- Try increasing timeout in configuration
+**接続タイムアウト**
+- インターネット接続を確認
+- プロキシの背後にいるか確認
 
-### Debug Mode
+### デバッグモード
 
-Enable debug mode for detailed logging:
+詳細なログ記録のためデバッグモードを有効化:
 
 ```bash
 coda --debug chat
 ```
 
-Check logs at `~/.coda/coda.log`
+ログは`~/.coda/coda.log`で確認できます
 
-## License
+## ライセンス
 
 MIT License
 
-Copyright (c) 2024 Common Creation
+## 謝辞
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+- CLI用[Cobra](https://github.com/spf13/cobra)で構築
+- [Bubbletea](https://github.com/charmbracelet/bubbletea)搭載のUI
+- OpenAIおよびAzure OpenAI API経由のAI統合
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+## ロードマップ
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-
-## Acknowledgments
-
-- Built with [Cobra](https://github.com/spf13/cobra) for CLI
-- UI powered by [Bubbletea](https://github.com/charmbracelet/bubbletea)
-- AI integration via OpenAI and Azure OpenAI APIs
-
-## Roadmap
-
-- [x] Basic chat functionality
-- [x] File operation tools
-- [x] Multi-model support
-- [x] Configuration management
-- [ ] Rich terminal UI
-- [ ] Plugin system
-- [ ] Local model support
-- [ ] Team collaboration features
+- [x] 基本的なチャット機能
+- [x] ファイル操作ツール
+- [x] マルチモデルサポート
+- [x] 設定管理
+- [x] リッチターミナルUI
+- [ ] ツール追加
+- [ ] プラグインシステム
+- [ ] ローカルモデルサポート
 
 ---
 
