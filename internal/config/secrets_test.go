@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -107,6 +108,11 @@ func TestFileSecretsManager(t *testing.T) {
 	})
 
 	t.Run("file permissions", func(t *testing.T) {
+		// Skip permission test on Windows as it has different permission model
+		if runtime.GOOS == "windows" {
+			t.Skip("Skipping file permission test on Windows")
+		}
+
 		// Set a key to ensure file exists
 		err := manager.SetAPIKey("test", "test-key")
 		if err != nil {
