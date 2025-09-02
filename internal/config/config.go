@@ -260,8 +260,8 @@ func (ai *AIConfig) Validate() error {
 		return fmt.Errorf("temperature must be between 0 and 2, got %f", ai.Temperature)
 	}
 
-	if ai.MaxTokens <= 0 {
-		return fmt.Errorf("max_tokens must be positive, got %d", ai.MaxTokens)
+	if ai.MaxTokens < 0 {
+		return fmt.Errorf("max_tokens must not be negative, got %d", ai.MaxTokens)
 	}
 
 	// Provider-specific validation
