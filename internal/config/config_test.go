@@ -35,7 +35,7 @@ func TestNewDefaultConfig(t *testing.T) {
 		assert.Equal(t, "openai", cfg.AI.Provider)
 		assert.Equal(t, "o3", cfg.AI.Model)
 		assert.Equal(t, float32(0.7), cfg.AI.Temperature)
-		assert.Equal(t, 4096, cfg.AI.MaxTokens)
+		assert.Equal(t, 0, cfg.AI.MaxTokens)
 		assert.Equal(t, "info", cfg.Logging.Level)
 		assert.Equal(t, "text", cfg.Logging.Format)
 		assert.True(t, cfg.Logging.Timestamp)
@@ -139,14 +139,23 @@ func TestConfigValidate(t *testing.T) {
 		assert.Contains(t, err.Error(), "temperature must be between 0 and 2")
 	})
 
-	t.Run("invalid max tokens", func(t *testing.T) {
+	t.Run("valid max tokens zero", func(t *testing.T) {
 		cfg := NewDefaultConfig()
 		cfg.AI.APIKey = "test-key"
 		cfg.AI.MaxTokens = 0
 
 		err := cfg.Validate()
+		assert.NoError(t, err)
+	})
+
+	t.Run("invalid max tokens negative", func(t *testing.T) {
+		cfg := NewDefaultConfig()
+		cfg.AI.APIKey = "test-key"
+		cfg.AI.MaxTokens = -100
+
+		err := cfg.Validate()
 		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "max_tokens must be positive")
+		assert.Contains(t, err.Error(), "max_tokens must be non-negative")
 	})
 
 	t.Run("azure missing endpoint", func(t *testing.T) {
