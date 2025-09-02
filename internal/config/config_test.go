@@ -51,7 +51,7 @@ func TestNewDefaultConfig(t *testing.T) {
 	t.Run("environment overrides", func(t *testing.T) {
 		os.Setenv("CODA_AI_PROVIDER", "azure")
 		os.Setenv("OPENAI_API_KEY", "test-key")
-		os.Setenv("CODA_MODEL", "gpt-4-turbo")
+		os.Setenv("CODA_MODEL", "o4-mini")
 		os.Setenv("CODA_LOG_LEVEL", "debug")
 		os.Setenv("AZURE_OPENAI_ENDPOINT", "https://test.openai.azure.com")
 		os.Setenv("AZURE_OPENAI_DEPLOYMENT", "test-deployment")
@@ -60,12 +60,11 @@ func TestNewDefaultConfig(t *testing.T) {
 
 		assert.Equal(t, "azure", cfg.AI.Provider)
 		assert.Equal(t, "test-key", cfg.AI.APIKey)
-		assert.Equal(t, "gpt-4-turbo", cfg.AI.Model)
+		assert.Equal(t, "o4-mini", cfg.AI.Model)
 		assert.Equal(t, "debug", cfg.Logging.Level)
 		assert.Equal(t, "https://test.openai.azure.com", cfg.AI.Azure.Endpoint)
 		assert.Equal(t, "test-deployment", cfg.AI.Azure.DeploymentName)
 	})
-
 
 	t.Run("default denied paths", func(t *testing.T) {
 		cfg := NewDefaultConfig()

@@ -51,7 +51,7 @@ type AIConfig struct {
 	// Azure specific settings
 	Azure AzureConfig `yaml:"azure" json:"azure"`
 
-	// Reasoning effort for GPT-5 models (optional)
+	// Reasoning effort for oN, GPT-5 models (optional)
 	// Valid values: "minimal", "low", "medium", "high"
 	ReasoningEffort *string `yaml:"reasoning_effort,omitempty" json:"reasoning_effort,omitempty"`
 

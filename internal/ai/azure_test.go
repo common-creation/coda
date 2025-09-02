@@ -31,7 +31,7 @@ func TestNewAzureClient(t *testing.T) {
 			},
 			azureConfig: AzureConfig{
 				Endpoint:       "https://myaccount.openai.azure.com",
-				DeploymentName: "gpt-4-deployment",
+				DeploymentName: "o4-mini-deployment",
 				APIVersion:     "2024-02-01",
 			},
 			wantErr: false,
@@ -43,7 +43,7 @@ func TestNewAzureClient(t *testing.T) {
 			},
 			azureConfig: AzureConfig{
 				Endpoint:       "https://myaccount.openai.azure.com",
-				DeploymentName: "gpt-4-deployment",
+				DeploymentName: "o4-mini-deployment",
 			},
 			wantErr:     true,
 			errType:     ErrTypeAuthentication,
@@ -56,7 +56,7 @@ func TestNewAzureClient(t *testing.T) {
 			},
 			azureConfig: AzureConfig{
 				Endpoint:       "",
-				DeploymentName: "gpt-4-deployment",
+				DeploymentName: "o4-mini-deployment",
 			},
 			wantErr:     true,
 			errType:     ErrTypeInvalidRequest,
@@ -82,7 +82,7 @@ func TestNewAzureClient(t *testing.T) {
 			},
 			azureConfig: AzureConfig{
 				Endpoint:       "not-a-valid-url",
-				DeploymentName: "gpt-4-deployment",
+				DeploymentName: "o4-mini-deployment",
 			},
 			wantErr:     true,
 			errType:     ErrTypeInvalidRequest,
@@ -95,7 +95,7 @@ func TestNewAzureClient(t *testing.T) {
 			},
 			azureConfig: AzureConfig{
 				Endpoint:       "myaccount.openai.azure.com",
-				DeploymentName: "gpt-4-deployment",
+				DeploymentName: "o4-mini-deployment",
 			},
 			wantErr:     true,
 			errType:     ErrTypeInvalidRequest,
@@ -108,7 +108,7 @@ func TestNewAzureClient(t *testing.T) {
 			},
 			azureConfig: AzureConfig{
 				Endpoint:       "https://myaccount.openai.azure.com",
-				DeploymentName: "gpt-4-deployment",
+				DeploymentName: "o4-mini-deployment",
 				APIVersion:     "", // Should default to 2024-02-01
 			},
 			wantErr: false,
@@ -347,7 +347,7 @@ func TestAzureEndpointConstruction(t *testing.T) {
 func TestAzureListModels(t *testing.T) {
 	config := AIConfig{
 		APIKey: "test-key",
-		Model:  "gpt-4-turbo",
+		Model:  "o4-mini",
 	}
 	azureConfig := AzureConfig{
 		Endpoint:       "https://myaccount.openai.azure.com",
@@ -367,7 +367,7 @@ func TestAzureListModels(t *testing.T) {
 	assert.Equal(t, "azure", models[0].OwnedBy)
 
 	// Should also return configured model if different
-	assert.Equal(t, "gpt-4-turbo", models[1].ID)
+	assert.Equal(t, "o4-mini", models[1].ID)
 	assert.Equal(t, "azure", models[1].OwnedBy)
 }
 

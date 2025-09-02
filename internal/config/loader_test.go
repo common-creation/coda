@@ -71,7 +71,7 @@ func TestLoaderLoad(t *testing.T) {
 		configContent := `
 ai:
   provider: azure
-  model: gpt-4-turbo
+  model: o4-mini
   api_key: test-key
   azure:
     endpoint: https://test.openai.azure.com
@@ -91,8 +91,8 @@ ai:
 		if cfg.AI.Provider != "azure" {
 			t.Errorf("Expected provider azure, got %s", cfg.AI.Provider)
 		}
-		if cfg.AI.Model != "gpt-4-turbo" {
-			t.Errorf("Expected model gpt-4-turbo, got %s", cfg.AI.Model)
+		if cfg.AI.Model != "o4-mini" {
+			t.Errorf("Expected model o4-mini, got %s", cfg.AI.Model)
 		}
 		if cfg.AI.Azure.Endpoint != "https://test.openai.azure.com" {
 			t.Errorf("Expected endpoint https://test.openai.azure.com, got %s", cfg.AI.Azure.Endpoint)
@@ -130,7 +130,7 @@ func TestLoaderSave(t *testing.T) {
 		loader := NewLoader()
 		cfg := NewDefaultConfig()
 		cfg.AI.Provider = "azure"
-		cfg.AI.Model = "gpt-4-turbo"
+		cfg.AI.Model = "o4-mini"
 		cfg.AI.APIKey = "test-api-key"
 
 		savePath := filepath.Join(tempDir, "saved-config.yaml")
@@ -154,8 +154,8 @@ func TestLoaderSave(t *testing.T) {
 		if loadedCfg.AI.Provider != "azure" {
 			t.Errorf("Expected provider azure, got %s", loadedCfg.AI.Provider)
 		}
-		if loadedCfg.AI.Model != "gpt-4-turbo" {
-			t.Errorf("Expected model gpt-4-turbo, got %s", loadedCfg.AI.Model)
+		if loadedCfg.AI.Model != "o4-mini" {
+			t.Errorf("Expected model o4-mini, got %s", loadedCfg.AI.Model)
 		}
 	})
 
@@ -275,7 +275,7 @@ func TestApplyEnvironmentOverrides(t *testing.T) {
 			t.Errorf("Expected API key coda-key, got %s", cfg.AI.APIKey)
 		}
 		if cfg.AI.Model != "o3" {
-			t.Errorf("Expected model gpt-4, got %s", cfg.AI.Model)
+			t.Errorf("Expected model o3, got %s", cfg.AI.Model)
 		}
 	})
 
