@@ -50,8 +50,8 @@ var setCmd = &cobra.Command{
 	Long: `Set a configuration value.
 
 Examples:
-  coda config set ai.model gpt-4
-  coda config set ai.temperature 0.7
+  coda config set ai.model o4-mini
+  coda config set ai.temperature 1
   coda config set logging.level debug`,
 	Args: cobra.ExactArgs(2),
 	RunE: runConfigSet,

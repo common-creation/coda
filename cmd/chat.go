@@ -45,7 +45,7 @@ through natural language interaction.
 Examples:
   coda chat                    # Start a new chat session
   coda chat --continue         # Continue the last session
-  coda chat --model gpt-4      # Use a specific model`,
+  coda chat --model o4-mini    # Use a specific model`,
 	RunE: runChat,
 }
 

@@ -207,9 +207,6 @@ func mergeConfig(dst, src *Config) error {
 	}
 
 	// Merge Tools config
-	if len(src.Tools.Enabled) > 0 {
-		dst.Tools.Enabled = src.Tools.Enabled
-	}
 	if src.Tools.WorkspaceRoot != "" {
 		dst.Tools.WorkspaceRoot = src.Tools.WorkspaceRoot
 	}
@@ -397,13 +394,13 @@ ai:
   # api_key: your-api-key-here
   
   # Model to use
-  model: gpt-4
+  model: o3
   
   # Temperature (0-2, default: 0.7)
-  temperature: 0.7
+  temperature: 1
   
   # Maximum tokens for response
-  max_tokens: 4096
+  max_tokens: 0
   
   # OpenAI specific settings
   openai:
@@ -426,14 +423,6 @@ ai:
 
 # Tools Configuration
 tools:
-  # Enabled tools
-  enabled:
-    - read_file
-    - write_file
-    - edit_file
-    - list_files
-    - search_files
-  
   # Workspace root directory
   workspace_root: "."
   

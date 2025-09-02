@@ -181,7 +181,7 @@ func (c *OpenAIClient) convertChatRequest(req ChatRequest) (openai.ChatCompletio
 		if c.config.Model != "" {
 			openaiReq.Model = c.config.Model
 		} else {
-			openaiReq.Model = ModelGPT4Turbo
+			openaiReq.Model = "gpt-4-turbo"
 		}
 	}
 	

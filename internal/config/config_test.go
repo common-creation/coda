@@ -66,12 +66,6 @@ func TestNewDefaultConfig(t *testing.T) {
 		assert.Equal(t, "test-deployment", cfg.AI.Azure.DeploymentName)
 	})
 
-	t.Run("default enabled tools", func(t *testing.T) {
-		cfg := NewDefaultConfig()
-
-		expectedTools := []string{"read_file", "write_file", "edit_file", "list_files", "search_files"}
-		assert.Equal(t, expectedTools, cfg.Tools.Enabled)
-	})
 
 	t.Run("default denied paths", func(t *testing.T) {
 		cfg := NewDefaultConfig()

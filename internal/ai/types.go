@@ -17,13 +17,8 @@ const (
 
 // Common model name constants for easy reference.
 const (
-	ModelGPT4          = "gpt-4"
-	ModelGPT4Turbo     = "gpt-4-turbo"
-	ModelGPT4Vision    = "gpt-4-vision-preview"
-	ModelGPT35Turbo    = "gpt-3.5-turbo"
-	ModelGPT35Turbo16k = "gpt-3.5-turbo-16k"
-	ModelO3            = "o3"
-	ModelGPT5          = "gpt-5"
+	ModelO3   = "o3"
+	ModelGPT5 = "gpt-5"
 )
 
 // Default values for various parameters.
