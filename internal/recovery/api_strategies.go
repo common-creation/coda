@@ -283,7 +283,7 @@ func NewAlternativeModelStrategy(logger *log.Logger) *AlternativeModelStrategy {
 		logger: logger,
 		alternativeModels: []string{
 			"gpt-3.5-turbo",
-			"gpt-4",
+			"o3",
 			"claude-3-haiku",
 			"claude-3-sonnet",
 			// Add more alternative models as needed

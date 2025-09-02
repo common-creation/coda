@@ -20,7 +20,7 @@ type Client interface {
 	//
 	// Example:
 	//   resp, err := client.ChatCompletion(ctx, ChatRequest{
-	//       Model: "gpt-4",
+	//       Model: "o3",
 	//       Messages: []Message{
 	//           {Role: "user", Content: "Hello, AI!"},
 	//       },

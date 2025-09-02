@@ -104,7 +104,7 @@ func (h *E2ETestHelper) setupMocks(workspaceDir, configFile string) error {
 		// Load config from file
 		// This is simplified - in reality would parse the file
 		h.mockConfig.AI.Provider = "openai"
-		h.mockConfig.AI.Model = "gpt-4"
+		h.mockConfig.AI.Model = "o3"
 	}
 
 	// Setup mock logger
@@ -151,7 +151,7 @@ func (h *E2ETestHelper) SendInput(input string) {
 	// For now, just record the input
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	
+
 	h.messages = append(h.messages, ui.Message{
 		Content:   input,
 		Role:      "user",

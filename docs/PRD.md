@@ -67,12 +67,12 @@ ai:
   
   openai:
     api_key: "${OPENAI_API_KEY}"
-    model: "gpt-4"
+    model: "o3"
     
   azure:
     endpoint: "${AZURE_ENDPOINT}"
     api_key: "${AZURE_API_KEY}"
-    deployment_name: "gpt-4"
+    deployment_name: "o3"
     api_version: "2024-02-01"
 
 ui:

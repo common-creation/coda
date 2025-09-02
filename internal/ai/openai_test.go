@@ -66,7 +66,7 @@ func createTestConfig(baseURL string) AIConfig {
 	return AIConfig{
 		APIKey:         "test-api-key",
 		BaseURL:        baseURL,
-		Model:          "gpt-4",
+		Model:          "o3",
 		MaxRetries:     3,
 		RetryDelay:     10 * time.Millisecond,
 		RequestTimeout: 5 * time.Second,
@@ -130,7 +130,7 @@ func TestChatCompletion(t *testing.T) {
 		{
 			name: "successful completion",
 			request: ChatRequest{
-				Model: "gpt-4",
+				Model: "o3",
 				Messages: []Message{
 					{Role: RoleUser, Content: "Hello"},
 				},
@@ -140,7 +140,7 @@ func TestChatCompletion(t *testing.T) {
 				ID:      "chatcmpl-123",
 				Object:  "chat.completion",
 				Created: time.Now().Unix(),
-				Model:   "gpt-4",
+				Model:   "o3",
 				Choices: []struct {
 					Index   int `json:"index"`
 					Message struct {
@@ -183,7 +183,7 @@ func TestChatCompletion(t *testing.T) {
 		{
 			name: "authentication error",
 			request: ChatRequest{
-				Model: "gpt-4",
+				Model: "o3",
 				Messages: []Message{
 					{Role: RoleUser, Content: "Hello"},
 				},
@@ -206,7 +206,7 @@ func TestChatCompletion(t *testing.T) {
 		{
 			name: "rate limit error",
 			request: ChatRequest{
-				Model: "gpt-4",
+				Model: "o3",
 				Messages: []Message{
 					{Role: RoleUser, Content: "Hello"},
 				},
@@ -279,10 +279,10 @@ func TestChatCompletionStream(t *testing.T) {
 
 		// Send chunks
 		chunks := []string{
-			`{"id":"chatcmpl-123","object":"chat.completion.chunk","created":1234567890,"model":"gpt-4","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}`,
-			`{"id":"chatcmpl-123","object":"chat.completion.chunk","created":1234567890,"model":"gpt-4","choices":[{"index":0,"delta":{"content":"Hello"},"finish_reason":null}]}`,
-			`{"id":"chatcmpl-123","object":"chat.completion.chunk","created":1234567890,"model":"gpt-4","choices":[{"index":0,"delta":{"content":" world!"},"finish_reason":null}]}`,
-			`{"id":"chatcmpl-123","object":"chat.completion.chunk","created":1234567890,"model":"gpt-4","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}`,
+			`{"id":"chatcmpl-123","object":"chat.completion.chunk","created":1234567890,"model":"o3","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}`,
+			`{"id":"chatcmpl-123","object":"chat.completion.chunk","created":1234567890,"model":"o3","choices":[{"index":0,"delta":{"content":"Hello"},"finish_reason":null}]}`,
+			`{"id":"chatcmpl-123","object":"chat.completion.chunk","created":1234567890,"model":"o3","choices":[{"index":0,"delta":{"content":" world!"},"finish_reason":null}]}`,
+			`{"id":"chatcmpl-123","object":"chat.completion.chunk","created":1234567890,"model":"o3","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}`,
 		}
 
 		for _, chunk := range chunks {
@@ -298,7 +298,7 @@ func TestChatCompletionStream(t *testing.T) {
 	require.NoError(t, err)
 
 	req := ChatRequest{
-		Model: "gpt-4",
+		Model: "o3",
 		Messages: []Message{
 			{Role: RoleUser, Content: "Hello"},
 		},
@@ -345,7 +345,7 @@ func TestListModels(t *testing.T) {
 				OwnedBy string `json:"owned_by"`
 			}{
 				{
-					ID:      "gpt-4",
+					ID:      "o3",
 					Object:  "model",
 					Created: 1234567890,
 					OwnedBy: "openai",
@@ -370,7 +370,7 @@ func TestListModels(t *testing.T) {
 	models, err := client.ListModels(context.Background())
 	require.NoError(t, err)
 	assert.Len(t, models, 2)
-	assert.Equal(t, "gpt-4", models[0].ID)
+	assert.Equal(t, "o3", models[0].ID)
 	assert.Equal(t, "gpt-3.5-turbo", models[1].ID)
 }
 
@@ -459,7 +459,7 @@ func TestRetryLogic(t *testing.T) {
 				ID:      "chatcmpl-123",
 				Object:  "chat.completion",
 				Created: time.Now().Unix(),
-				Model:   "gpt-4",
+				Model:   "o3",
 				Choices: []struct {
 					Index   int `json:"index"`
 					Message struct {
@@ -492,7 +492,7 @@ func TestRetryLogic(t *testing.T) {
 	require.NoError(t, err)
 
 	req := ChatRequest{
-		Model: "gpt-4",
+		Model: "o3",
 		Messages: []Message{
 			{Role: RoleUser, Content: "Test retry"},
 		},
@@ -593,7 +593,7 @@ func TestErrorTypes(t *testing.T) {
 			require.NoError(t, err)
 
 			req := ChatRequest{
-				Model: "gpt-4",
+				Model: "o3",
 				Messages: []Message{
 					{Role: RoleUser, Content: "Test"},
 				},

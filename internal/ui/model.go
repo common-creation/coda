@@ -105,7 +105,7 @@ type Model struct {
 	blockCursorStyle lipgloss.Style // 行末カーソル用（ブロックシンボル）
 
 	// Input scroll position
-	inputScrollPosition int // 入力欄のスクロール位置
+	inputScrollPosition int  // 入力欄のスクロール位置
 	inputNeedsScrollbar bool // 入力欄にスクロールバーが必要か
 	inputTotalLines     int  // 入力の総行数
 	inputDisplayHeight  int  // 表示される行数
@@ -1351,7 +1351,7 @@ func (m Model) renderInputScrollbar(totalLines, visibleLines, scrollPosition int
 
 	// Calculate scrollbar height and position
 	scrollbarHeight := visibleLines
-	scrollPercent := float64(scrollPosition) / float64(totalLines - visibleLines)
+	scrollPercent := float64(scrollPosition) / float64(totalLines-visibleLines)
 	if scrollPercent < 0 {
 		scrollPercent = 0
 	}
@@ -1615,36 +1615,36 @@ func (m Model) renderInput() string {
 		if !hasScrollbar {
 			return inputView
 		}
-		
+
 		// スクロールバーが必要な場合は行ごとに結合
 		scrollbarView := m.renderInputScrollbar(m.inputTotalLines, m.inputDisplayHeight, m.inputScrollPosition)
-		
+
 		// 入力欄とスクロールバーを行ごとに結合
 		inputLines := strings.Split(inputView, "\n")
 		scrollLines := strings.Split(scrollbarView, "\n")
-		
+
 		var combined []string
 		maxLines := len(inputLines)
 		if len(scrollLines) > maxLines {
 			maxLines = len(scrollLines)
 		}
-		
+
 		for i := 0; i < maxLines; i++ {
 			var inputLine, scrollLine string
-			
+
 			if i < len(inputLines) {
 				inputLine = inputLines[i]
 			}
 			if i < len(scrollLines) {
 				scrollLine = scrollLines[i]
 			}
-			
+
 			// 入力欄とスクロールバーを結合
-			combined = append(combined, inputLine + scrollLine)
+			combined = append(combined, inputLine+scrollLine)
 		}
-		
+
 		return strings.Join(combined, "\n")
-		
+
 	case ModePermit:
 		return m.renderPermitDialog()
 	case ModeNormal:
@@ -1658,34 +1658,34 @@ func (m Model) renderInput() string {
 		if !hasScrollbar {
 			return inputView
 		}
-		
+
 		// スクロールバーが必要な場合は行ごとに結合
 		scrollbarView := m.renderInputScrollbar(m.inputTotalLines, m.inputDisplayHeight, m.inputScrollPosition)
-		
+
 		// 入力欄とスクロールバーを行ごとに結合
 		inputLines := strings.Split(inputView, "\n")
 		scrollLines := strings.Split(scrollbarView, "\n")
-		
+
 		var combined []string
 		maxLines := len(inputLines)
 		if len(scrollLines) > maxLines {
 			maxLines = len(scrollLines)
 		}
-		
+
 		for i := 0; i < maxLines; i++ {
 			var inputLine, scrollLine string
-			
+
 			if i < len(inputLines) {
 				inputLine = inputLines[i]
 			}
 			if i < len(scrollLines) {
 				scrollLine = scrollLines[i]
 			}
-			
+
 			// 入力欄とスクロールバーを結合
-			combined = append(combined, inputLine + scrollLine)
+			combined = append(combined, inputLine+scrollLine)
 		}
-		
+
 		return strings.Join(combined, "\n")
 	}
 
@@ -1768,13 +1768,13 @@ func (m *Model) renderMultilineInput() (string, bool) {
 		if cursorLine < startLine {
 			startLine = cursorLine
 			m.inputScrollPosition = startLine
-		} else if cursorLine >= startLine + displayHeight {
+		} else if cursorLine >= startLine+displayHeight {
 			startLine = cursorLine - displayHeight + 1
 			m.inputScrollPosition = startLine
 		}
-		
+
 		// startLineが範囲外にならないように調整
-		if startLine > len(lines) - displayHeight {
+		if startLine > len(lines)-displayHeight {
 			startLine = len(lines) - displayHeight
 			m.inputScrollPosition = startLine
 		}
@@ -2493,6 +2493,11 @@ func (m Model) getCursorLineAndColumn() (int, int) {
 
 // getModelTokenLimit returns the token limit for the given model
 func getModelTokenLimit(model string) int {
+	// gpt-5-series models (gpt-5, gpt-5-mini, etc.) have 400k context
+	if strings.HasPrefix(model, "gpt-5") {
+		return 400000
+	}
+
 	// o-series models (o1, o3, etc.) have 200k context
 	if strings.HasPrefix(model, "o") {
 		return 200000
@@ -2504,7 +2509,7 @@ func getModelTokenLimit(model string) int {
 	}
 
 	// GPT-4 Turbo and newer models or 4-omni
-	if strings.Contains(model, "gpt-4-turbo") || strings.Contains(model, "gpt-4") || strings.HasPrefix(model, "gpt-4o") {
+	if strings.Contains(model, "gpt-4-turbo") || strings.Contains(model, "o3") || strings.HasPrefix(model, "gpt-4o") {
 		return 128000
 	}
 

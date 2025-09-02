@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	
+
 	"github.com/common-creation/coda/internal/logging"
 )
 
@@ -126,7 +126,7 @@ func TestLoaderSave(t *testing.T) {
 		oldAPIKey := os.Getenv("OPENAI_API_KEY")
 		os.Setenv("OPENAI_API_KEY", "test-api-key")
 		defer os.Setenv("OPENAI_API_KEY", oldAPIKey)
-		
+
 		loader := NewLoader()
 		cfg := NewDefaultConfig()
 		cfg.AI.Provider = "azure"
@@ -264,7 +264,7 @@ func TestApplyEnvironmentOverrides(t *testing.T) {
 
 		os.Setenv("CODA_AI_PROVIDER", "azure")
 		os.Setenv("CODA_AI_API_KEY", "coda-key")
-		os.Setenv("CODA_MODEL", "gpt-4")
+		os.Setenv("CODA_MODEL", "o3")
 
 		applyEnvironmentOverrides(cfg)
 
@@ -274,7 +274,7 @@ func TestApplyEnvironmentOverrides(t *testing.T) {
 		if cfg.AI.APIKey != "coda-key" {
 			t.Errorf("Expected API key coda-key, got %s", cfg.AI.APIKey)
 		}
-		if cfg.AI.Model != "gpt-4" {
+		if cfg.AI.Model != "o3" {
 			t.Errorf("Expected model gpt-4, got %s", cfg.AI.Model)
 		}
 	})
@@ -284,7 +284,7 @@ func TestApplyEnvironmentOverrides(t *testing.T) {
 	t.Run("Azure API key fallback", func(t *testing.T) {
 		// Clear CODA_AI_API_KEY to test fallback
 		os.Unsetenv("CODA_AI_API_KEY")
-		
+
 		cfg := &Config{
 			AI: AIConfig{
 				Provider: "azure",
@@ -392,7 +392,7 @@ func TestCreateSampleConfig(t *testing.T) {
 	oldAPIKey := os.Getenv("OPENAI_API_KEY")
 	os.Setenv("OPENAI_API_KEY", "test-api-key")
 	defer os.Setenv("OPENAI_API_KEY", oldAPIKey)
-	
+
 	tempDir := t.TempDir()
 	samplePath := filepath.Join(tempDir, "sample.yaml")
 

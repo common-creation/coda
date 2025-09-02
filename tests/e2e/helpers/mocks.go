@@ -152,14 +152,14 @@ func (m *MockAIClient) GetCallHistory() []ai.ChatRequest {
 func (m *MockAIClient) ListModels(ctx context.Context) ([]ai.Model, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	
+
 	if m.simulateError {
 		return nil, fmt.Errorf(m.errorMessage)
 	}
-	
+
 	// Return mock models
 	return []ai.Model{
-		{ID: "gpt-4"},
+		{ID: "o3"},
 		{ID: "gpt-3.5-turbo"},
 	}, nil
 }
@@ -168,11 +168,11 @@ func (m *MockAIClient) ListModels(ctx context.Context) ([]ai.Model, error) {
 func (m *MockAIClient) Ping(ctx context.Context) error {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	
+
 	if m.simulateError {
 		return fmt.Errorf(m.errorMessage)
 	}
-	
+
 	return nil
 }
 

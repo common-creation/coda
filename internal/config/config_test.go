@@ -33,7 +33,7 @@ func TestNewDefaultConfig(t *testing.T) {
 		cfg := NewDefaultConfig()
 
 		assert.Equal(t, "openai", cfg.AI.Provider)
-		assert.Equal(t, "gpt-4", cfg.AI.Model)
+		assert.Equal(t, "o3", cfg.AI.Model)
 		assert.Equal(t, float32(0.7), cfg.AI.Temperature)
 		assert.Equal(t, 4096, cfg.AI.MaxTokens)
 		assert.Equal(t, "info", cfg.Logging.Level)
@@ -89,7 +89,7 @@ func TestConfigValidate(t *testing.T) {
 			AI: AIConfig{
 				Provider:    "openai",
 				APIKey:      "test-key",
-				Model:       "gpt-4",
+				Model:       "o3",
 				Temperature: 0.7,
 				MaxTokens:   4096,
 			},
@@ -218,7 +218,7 @@ func TestAIConfigValidate(t *testing.T) {
 		ai := AIConfig{
 			Provider:    "openai",
 			APIKey:      "test-key",
-			Model:       "gpt-4",
+			Model:       "o3",
 			Temperature: 0.7,
 			MaxTokens:   4096,
 		}
@@ -231,7 +231,7 @@ func TestAIConfigValidate(t *testing.T) {
 		ai := AIConfig{
 			Provider:    "azure",
 			APIKey:      "test-key",
-			Model:       "gpt-4",
+			Model:       "o3",
 			Temperature: 0.7,
 			MaxTokens:   4096,
 			Azure: AzureConfig{
@@ -247,7 +247,7 @@ func TestAIConfigValidate(t *testing.T) {
 	t.Run("empty provider", func(t *testing.T) {
 		ai := AIConfig{
 			APIKey:    "test-key",
-			Model:     "gpt-4",
+			Model:     "o3",
 			MaxTokens: 4096,
 		}
 

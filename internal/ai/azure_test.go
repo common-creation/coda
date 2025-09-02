@@ -167,7 +167,7 @@ func TestAzureChatCompletion(t *testing.T) {
 				ID:      "chatcmpl-azure-123",
 				Object:  "chat.completion",
 				Created: time.Now().Unix(),
-				Model:   "gpt-4",
+				Model:   "o3",
 				Choices: []struct {
 					Index   int `json:"index"`
 					Message struct {
@@ -385,7 +385,7 @@ func TestAzurePing(t *testing.T) {
 				ID:      "ping-response",
 				Object:  "chat.completion",
 				Created: time.Now().Unix(),
-				Model:   "gpt-4",
+				Model:   "o3",
 				Choices: []struct {
 					Index   int `json:"index"`
 					Message struct {
@@ -495,10 +495,10 @@ func TestAzureChatCompletionStream(t *testing.T) {
 
 		// Send chunks
 		chunks := []string{
-			`{"id":"chatcmpl-azure-123","object":"chat.completion.chunk","created":1234567890,"model":"gpt-4","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}`,
-			`{"id":"chatcmpl-azure-123","object":"chat.completion.chunk","created":1234567890,"model":"gpt-4","choices":[{"index":0,"delta":{"content":"Azure"},"finish_reason":null}]}`,
-			`{"id":"chatcmpl-azure-123","object":"chat.completion.chunk","created":1234567890,"model":"gpt-4","choices":[{"index":0,"delta":{"content":" streaming!"},"finish_reason":null}]}`,
-			`{"id":"chatcmpl-azure-123","object":"chat.completion.chunk","created":1234567890,"model":"gpt-4","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}`,
+			`{"id":"chatcmpl-azure-123","object":"chat.completion.chunk","created":1234567890,"model":"o3","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}`,
+			`{"id":"chatcmpl-azure-123","object":"chat.completion.chunk","created":1234567890,"model":"o3","choices":[{"index":0,"delta":{"content":"Azure"},"finish_reason":null}]}`,
+			`{"id":"chatcmpl-azure-123","object":"chat.completion.chunk","created":1234567890,"model":"o3","choices":[{"index":0,"delta":{"content":" streaming!"},"finish_reason":null}]}`,
+			`{"id":"chatcmpl-azure-123","object":"chat.completion.chunk","created":1234567890,"model":"o3","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}`,
 		}
 
 		for _, chunk := range chunks {
@@ -566,7 +566,7 @@ func TestAzureAuthentication(t *testing.T) {
 			ID:      "auth-test",
 			Object:  "chat.completion",
 			Created: time.Now().Unix(),
-			Model:   "gpt-4",
+			Model:   "o3",
 			Choices: []struct {
 				Index   int `json:"index"`
 				Message struct {
@@ -662,7 +662,7 @@ func TestDeploymentNameUsage(t *testing.T) {
 
 	config := AIConfig{
 		APIKey: "test-key",
-		Model:  "gpt-4", // This should be overridden by deployment name
+		Model:  "o3", // This should be overridden by deployment name
 	}
 	azureConfig := AzureConfig{
 		Endpoint:       server.URL,

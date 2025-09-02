@@ -59,8 +59,8 @@ coda config set-api-key azure
 
 3. (Optional) Configure settings:
 ```bash
-coda config set ai.model gpt-4
-coda config set ai.temperature 0.7
+coda config set ai.model o4-mini
+coda config set ai.temperature 1
 ```
 
 ### Basic Usage

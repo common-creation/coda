@@ -50,11 +50,11 @@ type AIConfig struct {
 
 	// Azure specific settings
 	Azure AzureConfig `yaml:"azure" json:"azure"`
-	
+
 	// Reasoning effort for GPT-5 models (optional)
 	// Valid values: "minimal", "low", "medium", "high"
 	ReasoningEffort *string `yaml:"reasoning_effort,omitempty" json:"reasoning_effort,omitempty"`
-	
+
 	// Use Structured Outputs for tool calls (requires GPT-4o-2024-08-06 or later)
 	UseStructuredOutputs bool `yaml:"use_structured_outputs" json:"use_structured_outputs"`
 }
@@ -146,9 +146,9 @@ func NewDefaultConfig() *Config {
 		AI: AIConfig{
 			Provider:    getEnvOrDefault("CODA_AI_PROVIDER", "openai"),
 			APIKey:      os.Getenv("OPENAI_API_KEY"),
-			Model:       getEnvOrDefault("CODA_MODEL", "gpt-4"),
+			Model:       getEnvOrDefault("CODA_MODEL", "o3"),
 			Temperature: 0.7,
-			MaxTokens:   4096,
+			MaxTokens:   0,
 			OpenAI: OpenAIConfig{
 				BaseURL:      os.Getenv("OPENAI_BASE_URL"),
 				Organization: os.Getenv("OPENAI_ORGANIZATION"),
@@ -274,7 +274,7 @@ func (ai *AIConfig) Validate() error {
 			return errors.New("Azure deployment name is required")
 		}
 	}
-	
+
 	// Validate reasoning effort if specified
 	if ai.ReasoningEffort != nil {
 		validEfforts := map[string]bool{

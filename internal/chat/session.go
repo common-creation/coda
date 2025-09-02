@@ -73,7 +73,7 @@ func NewSessionManager(maxAge time.Duration, maxTokens int) *SessionManager {
 		sessions:  make(map[string]*Session),
 		maxAge:    maxAge,
 		maxTokens: maxTokens,
-		tokenizer: &SimpleTokenCounter{model: "gpt-4"},
+		tokenizer: &SimpleTokenCounter{model: "o3"},
 	}
 
 	// Start cleanup goroutine
