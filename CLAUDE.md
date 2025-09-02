@@ -205,3 +205,4 @@ Tools are invoked via JSON blocks in AI responses:
 - Check logs at `~/.coda/coda.log`
 - Use structured logging with appropriate levels
 - Add context to errors for better tracing
+- GPT-3.5, GPT-4 などの旧世代モデルは使用禁止です。 o3, GPT-5 を基本とします。

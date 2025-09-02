@@ -39,14 +39,6 @@ ai:
 
 # Tools Configuration
 tools:
-  # Enabled tools
-  enabled:
-    - read_file
-    - write_file
-    - edit_file
-    - list_files
-    - search_files
-  
   # Workspace root directory
   workspace_root: "."
   

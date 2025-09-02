@@ -82,9 +82,6 @@ type AzureConfig struct {
 
 // ToolsConfig contains tools related configuration
 type ToolsConfig struct {
-	// Enable/disable specific tools
-	Enabled []string `yaml:"enabled" json:"enabled"`
-
 	// Workspace root for file operations
 	WorkspaceRoot string `yaml:"workspace_root" json:"workspace_root"`
 
@@ -160,7 +157,6 @@ func NewDefaultConfig() *Config {
 			},
 		},
 		Tools: ToolsConfig{
-			Enabled:       []string{"read_file", "write_file", "edit_file", "list_files", "search_files"},
 			WorkspaceRoot: getEnvOrDefault("CODA_WORKSPACE", "."),
 			FileAccess: FileAccessConfig{
 				AllowedPaths: []string{"**/*"},
