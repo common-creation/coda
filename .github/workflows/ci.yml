@@ -39,7 +39,13 @@ jobs:
       run: go mod verify
     
     - name: Run tests
-      run: go test -v -race -coverprofile=coverage.txt -covermode=atomic "./..."
+      shell: bash
+      run: |
+        if [[ "${{ runner.os }}" == "Windows" ]]; then
+          go test -v -race ./...
+        else
+          go test -v -race -coverprofile=coverage.txt -covermode=atomic ./...
+        fi
     
     - name: Upload coverage to Codecov
       if: matrix.os == 'ubuntu-latest' && matrix.go-version == '1.21'
@@ -69,7 +75,7 @@ jobs:
     
     - name: Download dependencies
       run: |
-        rm -f go.sum
+        rm go.sum
         go mod tidy
       env:
         GOSUMDB: "off" # verifying github.com/charmbracelet/x/ansi@v0.9.3: checksum mismatch
