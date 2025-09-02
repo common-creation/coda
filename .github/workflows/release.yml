@@ -40,6 +40,7 @@ jobs:
   build-without-goreleaser:
     name: Build Binaries (Fallback)
     runs-on: ubuntu-latest
+    needs: goreleaser
     if: failure()
     
     steps:
